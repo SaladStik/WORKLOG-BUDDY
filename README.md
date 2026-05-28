@@ -1,72 +1,135 @@
 # Worklog Buddy
 
-VS Code extension that notices when you've **actually been coding** (not just leaving the
-window open), asks **which Jira ticket** you're on, tracks your work against it, and then
-**nudges you to post AI-written updates** — which you review and approve before anything
-goes to Jira. Summaries are generated with **NVIDIA NIM**.
+A VS Code extension that notices when you've **actually been coding** (not just leaving
+the window open), asks **which Jira ticket** you're on, and then **drafts your Jira
+updates for you** — a worklog entry plus a comment — which you review and approve before
+anything is posted. Drafts are written by **NVIDIA NIM**.
 
-## The flow
+---
 
-1. **"Yo — what ticket are you working on?"** Once you cross a threshold of real coding
-   (or run the command), it asks. If your Jira connection is set up, it shows your
-   assigned tickets in a picker (and guesses from your git branch).
-2. **It tracks everything against that ticket** — active editing time, edits, files
-   touched, commits — measured _since your last update_, not wall-clock with the window open.
-3. **It nudges you periodically:** _"You just committed on PROJ-123 — write an update?"_ or
-   _"You've done ~20 min of work — write an update?"_
-4. **You review & approve.** It drafts the update from your `git diff` + commits via NIM,
-   opens it as an editable doc, and only posts the text **you** approve.
-5. **Manage your Jira info** anytime: URL, email, token, test connection, switch ticket.
+## 5-minute setup
 
-## Architecture
+### 1. Install the extension (~1 min)
+Either:
+- **From the packaged file:** `Cmd+Shift+P` → **Extensions: Install from VSIX…** → pick
+  `worklog-buddy-0.0.1.vsix`, then **reload the window**.
+- **From source (dev):** open this folder in VS Code → `npm install` → press **F5**.
 
-| File                     | Responsibility                                                                                                               |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `src/activityTracker.ts` | Heartbeat-with-decay — counts real editing, not idle time. Resets each update so a snapshot = "work since last Jira update". |
-| `src/gitInfo.ts`         | Branch + Jira-key parsing, HEAD-sha (commit detection), diff/commit evidence.                                                |
-| `src/nimClient.ts`       | Calls NVIDIA NIM (OpenAI-compatible) to draft the update.                                                                    |
-| `src/jira.ts`            | Post comment, search assigned issues, test connection (REST v3).                                                             |
-| `src/extension.ts`       | Active-ticket session, timer-driven nudges, review/approve, Jira management.                                                 |
+After installing, reload: `Cmd+Shift+P` → **Developer: Reload Window**.
 
-## Run it (hackathon quick start)
+### 2. Open the panel (~10 sec)
+Click the **clock icon** in the left Activity Bar. The **Worklog Buddy → Manage** panel opens.
 
-```bash
-npm install
-npm run compile
-```
+### 3. Connect Jira (~2 min)
+1. Create a Jira API token at
+   **https://id.atlassian.com/manage-profile/security/api-tokens** → Create → copy it.
+2. In the panel's **Jira connection** section, fill in:
+   - **Jira URL** — `https://yourcompany.atlassian.net`
+   - **Account email** — the email you log into Jira with
+   - **API token** — the token you just copied
+3. Click **Test connection**. On success it shows `✓ Connected as <you>` and loads your
+   assigned tickets below.
 
-Press **F5** to launch the Extension Development Host, then:
+### 4. Add your NIM key (~1 min)
+In the **NVIDIA NIM** section, paste your API key (`nvapi-…`). Leave the base URL and
+model as-is (`meta/llama-3.1-8b-instruct` is fast and fine for summaries). Click **Save**.
 
-- **`Worklog: Set NVIDIA NIM API key`** — paste your `nvapi-…` key (stored in
-  `SecretStorage`, never in settings or source).
-- **`Worklog: Manage Jira connection`** — set URL, email, token; **Test connection**.
-- **`Worklog: Start working on a ticket`** — pick from your assigned tickets.
-- Edit files / commit. You'll get nudged. To demo instantly, lower
-  `worklog.updateReminderMinutes` to `1`, or just run **`Worklog: Write Jira update now`**.
+### 5. Start working (~30 sec)
+Click one of your tickets in the **Assigned tickets** list to make it active. Now just
+code. When you've done a chunk of work — or right after a `git commit` — you'll get a
+nudge offering to write the update. Approve it, and it posts to Jira.
+
+> **Demo tip:** to see it fire immediately, set **Remind to update after N active
+> minutes** to `1` in the panel, or run **`Worklog: Write Jira update now`** from the
+> command palette.
+
+---
+
+## How it works
+
+**1. It detects *real* work, not an idle window.**
+Every edit, save, cursor move and window-focus change is a "heartbeat". Time only counts
+toward "active" when the gap between heartbeats is short (under the idle timeout) and the
+window is focused — so leaving VS Code open on a coffee break adds nothing. The clock
+resets every time you post an update, so "active minutes" always means *work since your
+last Jira update*.
+
+**2. It asks which ticket you're on.**
+Once you cross the activity threshold (or commit), it prompts. It pre-guesses the ticket
+key from your git branch (`feature/SCRUM-17-foo`) and can list your assigned, not-Done
+tickets straight from Jira so you just click one.
+
+**3. It nudges you at the right moments.**
+A timer checks two triggers: **a fresh git commit** ("You just committed on SCRUM-17 —
+write an update?") and **accumulated active time** ("You've done ~20 min of work…").
+Nudges respect a snooze window so they don't nag.
+
+**4. It drafts the update from what you actually did.**
+It gathers evidence — `git diff`, recent commit messages, and the files you touched — and
+sends it to NVIDIA NIM. The draft **streams live** into a markdown document so you see it
+appear in real time.
+
+**5. You review, then approve.**
+Nothing is posted automatically. You get a dialog with **Approve & post** / **Copy** /
+**Edit first**. Approving logs a **worklog entry** (time tracking) *and* posts the draft
+as a **comment** on the ticket. Want to tweak it first? Choose *Edit first*, edit the doc,
+then run **`Worklog: Post current draft`**.
+
+---
 
 ## Settings
 
-| Setting                                       | Default                               | Meaning                                     |
-| --------------------------------------------- | ------------------------------------- | ------------------------------------------- |
-| `worklog.workThresholdMinutes`                | 25                                    | Active min before the "what ticket?" prompt |
-| `worklog.updateReminderMinutes`               | 20                                    | Active min since last update before nudging |
-| `worklog.remindOnCommit`                      | true                                  | Nudge right after a commit                  |
-| `worklog.snoozeMinutes`                       | 10                                    | Quiet period after snooze/dismiss           |
-| `worklog.idleTimeoutMinutes`                  | 3                                     | Gap that stops counting as active           |
-| `worklog.autoNudge`                           | true                                  | Master switch for automatic nudges          |
-| `worklog.nim.baseUrl`                         | `https://integrate.api.nvidia.com/v1` | NIM endpoint                                |
-| `worklog.nim.model`                           | `deepseek-ai/deepseek-v4-pro`         | Summary model                               |
-| `worklog.jira.baseUrl` / `worklog.jira.email` | ""                                    | Jira connection (token via SecretStorage)   |
+| Setting | Default | Meaning |
+|---|---|---|
+| `worklog.workThresholdMinutes` | 25 | Active min before the "what ticket?" prompt |
+| `worklog.updateReminderMinutes` | 20 | Active min since last update before nudging |
+| `worklog.remindOnCommit` | true | Nudge right after a commit |
+| `worklog.snoozeMinutes` | 10 | Quiet period after snooze/dismiss |
+| `worklog.idleTimeoutMinutes` | 3 | Gap that stops counting as active |
+| `worklog.autoNudge` | true | Master switch for automatic nudges |
+| `worklog.nim.baseUrl` | `https://integrate.api.nvidia.com/v1` | NIM endpoint |
+| `worklog.nim.model` | `meta/llama-3.1-8b-instruct` | Draft model |
+| `worklog.jira.baseUrl` / `worklog.jira.email` | "" | Jira connection (token in SecretStorage) |
+
+All of these are editable from the sidebar panel — you rarely need to touch raw settings.
 
 ## Commands
 
-- **Worklog: Start working on a ticket** — pick/switch the active ticket
-- **Worklog: Write Jira update now** — draft, review, approve, post
+Open with `Cmd+Shift+P`:
+
+- **Worklog: Open management panel** — the sidebar UI
+- **Worklog: Start working on a ticket** — pick / switch the active ticket
+- **Worklog: Write Jira update now** — draft + review + post on demand
+- **Worklog: Post current draft** — post the draft document you've been editing
 - **Worklog: Manage Jira connection** — URL / email / token / test / switch
 - **Worklog: Set NVIDIA NIM API key**
 - **Worklog: Reset activity session**
 
-## Security note
+## Where credentials live
 
-Your NIM key was shared in plaintext during development — **rotate it**. Both the NIM key
-and the Jira token are stored via VS Code `SecretStorage` at runtime, not in settings.
+Your **NIM key** and **Jira token** are stored in VS Code's encrypted `SecretStorage` —
+never in settings files or source. Jira URL and email are stored in your VS Code settings.
+
+## Project layout
+
+| File | Responsibility |
+|---|---|
+| `src/activityTracker.ts` | Heartbeat-with-decay; counts real editing, not idle time |
+| `src/gitInfo.ts` | Branch + Jira-key parsing, commit detection, diff/commit evidence |
+| `src/nimClient.ts` | Calls NVIDIA NIM (streaming) to draft the update |
+| `src/jira.ts` | Worklog, comment, ticket search, connection test (REST v3) |
+| `src/extension.ts` | Session, nudges, review/approve flow, sidebar webview panel |
+
+## Build from source
+
+```bash
+npm install
+npm run compile                                   # type-check + build to out/
+npx @vscode/vsce package --skip-license --allow-missing-repository   # → .vsix
+```
+
+There's also `smoke-test.mjs` for verifying the NIM + Jira integrations outside VS Code:
+
+```bash
+node --env-file=.env smoke-test.mjs               # reads creds from a local .env (gitignored)
+```
