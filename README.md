@@ -112,13 +112,33 @@ never in settings files or source. Jira URL and email are stored in your VS Code
 
 ## Project layout
 
-| File | Responsibility |
-|---|---|
-| `src/activityTracker.ts` | Heartbeat-with-decay; counts real editing, not idle time |
-| `src/gitInfo.ts` | Branch + Jira-key parsing, commit detection, diff/commit evidence |
-| `src/nimClient.ts` | Calls NVIDIA NIM (streaming) to draft the update |
-| `src/jira.ts` | Worklog, comment, ticket search, connection test (REST v3) |
-| `src/extension.ts` | Session, nudges, review/approve flow, sidebar webview panel |
+The code is organized in layers — the entry point only wires services together:
+
+```
+src/
+  extension.ts              Entry point — constructs services, registers commands
+  core/
+    config.ts               Settings + secrets accessors (SecretStorage)
+    lock.ts                 runExclusive mutex — prevents stacked prompts
+    session.ts              SessionManager — active ticket, tracker, status bar
+    reminders.ts            ReminderService — commit/activity nudge triggers
+  features/
+    tickets.ts              TicketService — pick / switch the active ticket
+    draft.ts                DraftService — generate → review → post a Jira update
+    jiraManager.ts          Manage-Jira quick-pick command
+  services/
+    activityTracker.ts      Heartbeat-with-decay; counts real editing, not idle time
+    gitInfo.ts              Branch/key parsing, commit detection, diff evidence
+    nimClient.ts            Calls NVIDIA NIM (streaming) to draft the update
+    jira.ts                 Worklog, comment, ticket search, connection test (REST v3)
+    adf.ts                  Markdown → Jira ADF converter
+  webview/
+    settingsView.ts         SettingsViewProvider — the sidebar panel
+    panelHtml.ts            Panel HTML / CSS / JS
+```
+
+Dependencies form a strict DAG: `services` + `core/config` → `core/session` →
+`features` → `core/reminders` → `extension`.
 
 ## Build from source
 
