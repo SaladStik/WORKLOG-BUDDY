@@ -7,9 +7,10 @@ export interface NimConfig {
 }
 
 const SYSTEM_PROMPT =
-  'You are a concise software-engineering assistant. Given git activity, you write a ' +
-  'short, factual work-log summary suitable for a Jira ticket comment. Use past tense, ' +
-  'bullet points, and focus on what changed and why. No preamble, no fluff.';
+  'You are a concise software-engineering assistant. Given git activity (diff, commits, ' +
+  'changed files), you write a factual work-log update for a Jira ticket. Use past tense, ' +
+  'read the actual diff to describe what changed in each file, and focus on what changed ' +
+  'and why. No preamble, no fluff, no invented changes — only what the diff shows.';
 
 /**
  * Calls the NVIDIA NIM OpenAI-compatible endpoint and returns the full summary text.
@@ -27,7 +28,7 @@ export async function summarize(cfg: NimConfig, userPrompt: string): Promise<str
     ],
     temperature: 0.4,
     top_p: 0.95,
-    max_tokens: 400,
+    max_tokens: 500,
     chat_template_kwargs: { thinking: false },
     stream: false,
   } as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
@@ -55,7 +56,7 @@ export async function summarizeStream(
     ],
     temperature: 0.4,
     top_p: 0.95,
-    max_tokens: 400,
+    max_tokens: 500,
     chat_template_kwargs: { thinking: false },
     stream: true,
   } as unknown as OpenAI.Chat.ChatCompletionCreateParamsStreaming;
@@ -100,6 +101,10 @@ export function buildPrompt(
     evidence.diff || '(empty)',
     '```',
     '',
-    'Produce: a one-line headline, then 2-5 bullets of concrete changes. Keep it under 120 words.',
+    'Produce, in markdown:',
+    '1. A one-line **Summary** of the overall work.',
+    '2. A **Changes by file** section: one bullet per changed file as `path` — what changed and why.',
+    '   Group trivially-related files if there are many. Base every point on the diff above.',
+    'Keep each bullet to one or two lines. Do not invent changes not present in the diff.',
   ].join('\n');
 }

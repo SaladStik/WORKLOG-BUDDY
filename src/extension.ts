@@ -78,7 +78,20 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('worklog.postCurrentDraft', () =>
       runExclusive(() => postCurrentDraft(context)),
     ),
+
+    // Show the title-bar checkmark only when the active editor is a worklog draft.
+    vscode.window.onDidChangeActiveTextEditor(() => refreshDraftContext()),
   );
+
+  refreshDraftContext();
+}
+
+/** Sets the `worklog.activeDraft` context key based on the active editor's content. */
+function refreshDraftContext(): void {
+  const editor = vscode.window.activeTextEditor;
+  const isDraft =
+    !!editor && /^#\s*Worklog update\s*—/m.test(editor.document.getText().slice(0, 200));
+  void vscode.commands.executeCommand('setContext', 'worklog.activeDraft', isDraft);
 }
 
 export function deactivate(): void {
@@ -364,6 +377,7 @@ async function generateAndReview(context: vscode.ExtensionContext, ticket: strin
     content: `# Worklog update — ${ticket}\n\n`,
   });
   await vscode.window.showTextDocument(doc, { preview: false });
+  refreshDraftContext();
 
   const streamed = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Window, title: `Drafting ${ticket}…` },
