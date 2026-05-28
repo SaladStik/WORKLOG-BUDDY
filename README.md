@@ -5,7 +5,7 @@ window open), asks **which Jira ticket** you're on, tracks your work against it,
 **nudges you to post AI-written updates** — which you review and approve before anything
 goes to Jira. Summaries are generated with **NVIDIA NIM**.
 
-## The flowd
+## The flow
 
 1. **"Yo — what ticket are you working on?"** Once you cross a threshold of real coding
    (or run the command), it asks. If your Jira connection is set up, it shows your
