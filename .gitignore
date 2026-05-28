@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+*.tsbuildinfo
+
+# Packaged extension
+*.vsix
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Secrets / local env
+# NOTE: the NIM API key + Jira token are stored in VS Code SecretStorage at runtime,
+# so they are NOT written to disk. These patterns cover any local secret files you add.
+.env
+.env.*
+*.local
+secrets.json
+secrets.*.json
+*.secret
+*.secrets
+*.key
+*.pem
+nim-key*
+.nim-key
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+
+# VS Code extension test runner
+.vscode-test/

@@ -1,0 +1,101 @@
+{
+  "name": "worklog-buddy",
+  "displayName": "Worklog Buddy",
+  "description": "Pick a Jira ticket, then get nudged to post AI-written updates based on what you actually did in VS Code.",
+  "version": "0.0.1",
+  "publisher": "hackathon",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "worklog", "title": "Worklog Buddy", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "worklog": [
+        { "id": "worklog.settingsView", "type": "webview", "name": "Manage" }
+      ]
+    },
+    "commands": [
+      { "command": "worklog.openSettings", "title": "Worklog: Open management panel" },
+      { "command": "worklog.startTicket", "title": "Worklog: Start working on a ticket" },
+      { "command": "worklog.updateNow", "title": "Worklog: Write Jira update now" },
+      { "command": "worklog.manageJira", "title": "Worklog: Manage Jira connection" },
+      { "command": "worklog.setApiKey", "title": "Worklog: Set NVIDIA NIM API key" },
+      { "command": "worklog.resetSession", "title": "Worklog: Reset activity session" }
+    ],
+    "configuration": {
+      "title": "Worklog Buddy",
+      "properties": {
+        "worklog.workThresholdMinutes": {
+          "type": "number",
+          "default": 25,
+          "description": "Active coding minutes before prompting 'what ticket are you on?' when none is selected."
+        },
+        "worklog.updateReminderMinutes": {
+          "type": "number",
+          "default": 20,
+          "description": "Active coding minutes since the last update before nudging you to post a Jira update."
+        },
+        "worklog.remindOnCommit": {
+          "type": "boolean",
+          "default": true,
+          "description": "Nudge you to update Jira right after you make a git commit."
+        },
+        "worklog.snoozeMinutes": {
+          "type": "number",
+          "default": 10,
+          "description": "How long to stay quiet after you snooze or dismiss a nudge."
+        },
+        "worklog.idleTimeoutMinutes": {
+          "type": "number",
+          "default": 3,
+          "description": "Gap of inactivity after which time stops counting toward active minutes."
+        },
+        "worklog.autoNudge": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically nudge on commit / activity thresholds."
+        },
+        "worklog.nim.baseUrl": {
+          "type": "string",
+          "default": "https://integrate.api.nvidia.com/v1",
+          "description": "OpenAI-compatible base URL for NVIDIA NIM."
+        },
+        "worklog.nim.model": {
+          "type": "string",
+          "default": "deepseek-ai/deepseek-v4-pro",
+          "description": "Model to use for summary generation."
+        },
+        "worklog.jira.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Jira base URL, e.g. https://yourcompany.atlassian.net"
+        },
+        "worklog.jira.email": {
+          "type": "string",
+          "default": "",
+          "description": "Atlassian account email for API auth."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "dependencies": {
+    "openai": "^4.52.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}

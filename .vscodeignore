@@ -1,0 +1,11 @@
+.vscode/**
+src/**
+**/*.ts
+**/*.map
+tsconfig.json
+.gitignore
+.env
+.env.*
+secrets*
+smoke-test.mjs
+node_modules/.cache/**
