@@ -69,7 +69,7 @@
         },
         "worklog.nim.model": {
           "type": "string",
-          "default": "deepseek-ai/deepseek-v4-pro",
+          "default": "meta/llama-3.1-8b-instruct",
           "description": "Model to use for summary generation."
         },
         "worklog.jira.baseUrl": {

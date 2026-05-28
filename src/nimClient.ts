@@ -27,13 +27,49 @@ export async function summarize(cfg: NimConfig, userPrompt: string): Promise<str
     ],
     temperature: 0.4,
     top_p: 0.95,
-    max_tokens: 1024,
+    max_tokens: 400,
     chat_template_kwargs: { thinking: false },
     stream: false,
   } as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 
   const completion = await client.chat.completions.create(params);
   return completion.choices[0]?.message?.content?.trim() || '(model returned no content)';
+}
+
+/**
+ * Streaming variant — invokes `onChunk` for each piece of generated text so the UI
+ * can show tokens live. Returns the full assembled text once the stream ends.
+ */
+export async function summarizeStream(
+  cfg: NimConfig,
+  userPrompt: string,
+  onChunk: (text: string) => void | Promise<void>,
+): Promise<string> {
+  const client = new OpenAI({ apiKey: cfg.apiKey, baseURL: cfg.baseUrl });
+
+  const params = {
+    model: cfg.model,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0.4,
+    top_p: 0.95,
+    max_tokens: 400,
+    chat_template_kwargs: { thinking: false },
+    stream: true,
+  } as unknown as OpenAI.Chat.ChatCompletionCreateParamsStreaming;
+
+  const stream = await client.chat.completions.create(params);
+  let full = '';
+  for await (const chunk of stream) {
+    const piece = chunk.choices?.[0]?.delta?.content ?? '';
+    if (piece) {
+      full += piece;
+      await onChunk(piece);
+    }
+  }
+  return full.trim();
 }
 
 export function buildPrompt(

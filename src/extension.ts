@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ActivityTracker } from './activityTracker';
 import { collectEvidence, getBranch, getHeadSha, parseJiraKey } from './gitInfo';
-import { buildPrompt, summarize, NimConfig } from './nimClient';
+import { buildPrompt, summarizeStream, NimConfig } from './nimClient';
 import {
   addWorklog,
   postComment,
@@ -349,26 +349,40 @@ async function generateAndReview(context: vscode.ExtensionContext, ticket: strin
   const snap = tracker.snapshot();
   const sinceMinutes = Math.max(Math.round(snap.activeSeconds / 60) + 5, 15);
 
-  const draft = await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: `Drafting update for ${ticket}…` },
+  // Open the draft doc first and stream tokens into it so the user sees progress.
+  const doc = await vscode.workspace.openTextDocument({
+    language: 'markdown',
+    content: `# Worklog update — ${ticket}\n\n`,
+  });
+  await vscode.window.showTextDocument(doc, { preview: false });
+
+  const streamed = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Window, title: `Drafting ${ticket}…` },
     async () => {
       const evidence = await collectEvidence(folder, sinceMinutes);
       const prompt = buildPrompt(ticket, Math.round(snap.activeSeconds / 60), snap.filesTouched, evidence);
       const nim: NimConfig = {
         baseUrl: cfg.get<string>('nim.baseUrl', 'https://integrate.api.nvidia.com/v1'),
-        model: cfg.get<string>('nim.model', 'deepseek-ai/deepseek-v4-pro'),
+        model: cfg.get<string>('nim.model', 'meta/llama-3.1-8b-instruct'),
         apiKey,
       };
-      return summarize(nim, prompt);
+      try {
+        return await summarizeStream(nim, prompt, async (piece) => {
+          const edit = new vscode.WorkspaceEdit();
+          const end = doc.lineAt(doc.lineCount - 1).range.end;
+          edit.insert(doc.uri, end, piece);
+          await vscode.workspace.applyEdit(edit);
+        });
+      } catch (err) {
+        vscode.window.showErrorMessage(`NIM request failed: ${(err as Error).message}`);
+        return '';
+      }
     },
   );
 
-  // Open the draft as an editable doc so the user can revise before approving.
-  const doc = await vscode.workspace.openTextDocument({
-    language: 'markdown',
-    content: `# Worklog update — ${ticket}\n\n${draft}\n`,
-  });
-  await vscode.window.showTextDocument(doc, { preview: false });
+  if (!streamed) {
+    return;
+  }
 
   const jira = await getJiraConfig(context);
   const actions = jira ? ['Approve & post', 'Copy', 'Discard'] : ['Copy', 'Discard'];
@@ -530,7 +544,7 @@ class SettingsViewProvider implements vscode.WebviewViewProvider {
         jiraToken: '',
         nimApiKey: '',
         nimBaseUrl: cfg.get('nim.baseUrl', 'https://integrate.api.nvidia.com/v1'),
-        nimModel: cfg.get('nim.model', 'deepseek-ai/deepseek-v4-pro'),
+        nimModel: cfg.get('nim.model', 'meta/llama-3.1-8b-instruct'),
         autoNudge: cfg.get('autoNudge', true),
         workThresholdMinutes: cfg.get('workThresholdMinutes', 25),
         updateReminderMinutes: cfg.get('updateReminderMinutes', 20),
