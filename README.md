@@ -1,9 +1,14 @@
 # Worklog Buddy
 
-A VS Code extension that notices when you've **actually been coding** (not just leaving
-the window open), asks **which Jira ticket** you're on, and then **drafts your Jira
-updates for you** — a worklog entry plus a comment — which you review and approve before
-anything is posted. Drafts are written by **NVIDIA NIM**.
+Worklog Buddy lives right in your editor and quietly keeps your Jira tickets up to date
+for you. It watches when you're **actually coding** (not just leaving VS Code open), and
+when you've done real work — or just made a commit — it offers to **write the Jira update
+for you**: a worklog entry plus a comment, drafted from your actual `git diff` by
+**NVIDIA NIM**.
+
+It's built to help without getting in the way. Nudges are occasional, easy to snooze, and
+never post anything on their own — you always review and approve first. No leaving your
+editor, no context-switching to Jira, no end-of-day "wait, what did I even do today?"
 
 ---
 
