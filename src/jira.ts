@@ -35,6 +35,25 @@ export async function postComment(cfg: JiraConfig, issueKey: string, text: strin
   }
 }
 
+/** Split a line into ADF text nodes, wrapping any URLs in clickable link marks. */
+function inlineNodes(line: string): unknown[] {
+  const urlRe = /(https?:\/\/[^\s)]+)/g;
+  const nodes: unknown[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = urlRe.exec(line)) !== null) {
+    if (m.index > last) {
+      nodes.push({ type: 'text', text: line.slice(last, m.index) });
+    }
+    nodes.push({ type: 'text', text: m[1], marks: [{ type: 'link', attrs: { href: m[1] } }] });
+    last = m.index + m[1].length;
+  }
+  if (last < line.length) {
+    nodes.push({ type: 'text', text: line.slice(last) });
+  }
+  return nodes.length ? nodes : [{ type: 'text', text: line }];
+}
+
 /** Build an Atlassian Document Format (ADF) doc from plain text lines. */
 function adf(text: string): unknown {
   return {
@@ -42,7 +61,7 @@ function adf(text: string): unknown {
     version: 1,
     content: text.split('\n').map((line) => ({
       type: 'paragraph',
-      content: line.trim() ? [{ type: 'text', text: line }] : [],
+      content: line.trim() ? inlineNodes(line) : [],
     })),
   };
 }
