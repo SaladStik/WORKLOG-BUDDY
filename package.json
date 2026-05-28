@@ -25,6 +25,7 @@
       { "command": "worklog.openSettings", "title": "Worklog: Open management panel" },
       { "command": "worklog.startTicket", "title": "Worklog: Start working on a ticket" },
       { "command": "worklog.updateNow", "title": "Worklog: Write Jira update now" },
+      { "command": "worklog.postCurrentDraft", "title": "Worklog: Post current draft" },
       { "command": "worklog.manageJira", "title": "Worklog: Manage Jira connection" },
       { "command": "worklog.setApiKey", "title": "Worklog: Set NVIDIA NIM API key" },
       { "command": "worklog.resetSession", "title": "Worklog: Reset activity session" }

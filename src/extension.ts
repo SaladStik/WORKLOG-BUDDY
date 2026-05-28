@@ -75,6 +75,9 @@ export function activate(context: vscode.ExtensionContext): void {
       updateStatus(context);
       vscode.window.showInformationMessage('Worklog activity session reset.');
     }),
+    vscode.commands.registerCommand('worklog.postCurrentDraft', () =>
+      runExclusive(() => postCurrentDraft(context)),
+    ),
   );
 }
 
@@ -193,15 +196,21 @@ async function checkTriggers(context: vscode.ExtensionContext): Promise<void> {
   const snap = tracker.snapshot();
   const mins = snap.activeSeconds / 60;
 
-  if (!ticket) {
-    if (snap.editCount > 0 && mins >= cfg.get<number>('workThresholdMinutes', 25)) {
+  // Commits always nudge (highest-signal trigger). If no ticket is set yet, ask
+  // which ticket this commit was on rather than dropping the signal on the floor.
+  if (committed && cfg.get<boolean>('remindOnCommit', true)) {
+    if (ticket) {
+      await runExclusive(() => nudge(context, ticket, 'You just committed'));
+    } else {
       await runExclusive(() => promptNoTicket(context, mins, snap.editCount));
     }
     return;
   }
 
-  if (committed && cfg.get<boolean>('remindOnCommit', true)) {
-    await runExclusive(() => nudge(context, ticket, 'You just committed'));
+  if (!ticket) {
+    if (snap.editCount > 0 && mins >= cfg.get<number>('workThresholdMinutes', 25)) {
+      await runExclusive(() => promptNoTicket(context, mins, snap.editCount));
+    }
     return;
   }
 
@@ -385,9 +394,15 @@ async function generateAndReview(context: vscode.ExtensionContext, ticket: strin
   }
 
   const jira = await getJiraConfig(context);
-  const actions = jira ? ['Approve & post', 'Copy', 'Discard'] : ['Copy', 'Discard'];
+  const actions = jira ? ['Approve & post', 'Copy', 'Edit first'] : ['Copy', 'Edit first'];
   const choice = await vscode.window.showInformationMessage(
-    `Review the update for ${ticket} (edit the document, then approve).`,
+    `Draft ready for ${ticket}.`,
+    {
+      modal: true,
+      detail:
+        'Approve & post: logs a worklog entry AND posts the draft as a comment.\n' +
+        'Edit first: dismiss this and edit the document. Run "Worklog: Post current draft" when ready.',
+    },
     ...actions,
   );
 
@@ -408,6 +423,43 @@ async function generateAndReview(context: vscode.ExtensionContext, ticket: strin
     } catch (err) {
       vscode.window.showErrorMessage(`Posting to Jira failed: ${(err as Error).message}`);
     }
+  }
+  // "Edit first" or Cancel: doc stays open. User runs `worklog.postCurrentDraft` when ready.
+}
+
+/**
+ * Posts the active markdown editor's content to Jira. Used when the user dismissed
+ * the modal to edit the draft, then wants to publish it. The ticket key is parsed
+ * from the document's leading "# Worklog update — TICKET" heading.
+ */
+async function postCurrentDraft(context: vscode.ExtensionContext): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showWarningMessage('Open the draft document, then run this command again.');
+    return;
+  }
+  const text = editor.document.getText();
+  const heading = text.match(/^#\s*Worklog update\s*—\s*([A-Z][A-Z0-9]+-\d+)/m);
+  const ticket = heading?.[1] ?? getActiveTicket(context);
+  if (!ticket) {
+    vscode.window.showWarningMessage('Could not determine the ticket. Set an active ticket first.');
+    return;
+  }
+  const jira = await getJiraConfig(context);
+  if (!jira) {
+    vscode.window.showWarningMessage('Configure Jira connection first (Manage panel).');
+    return;
+  }
+  const finalText = stripHeading(text);
+  const snap = tracker.snapshot();
+  try {
+    await addWorklog(jira, ticket, snap.activeSeconds, finalText);
+    await postComment(jira, ticket, finalText);
+    const mins = Math.max(1, Math.round(snap.activeSeconds / 60));
+    vscode.window.showInformationMessage(`Logged ${mins}m + posted update to ${ticket}.`);
+    markUpdated(context);
+  } catch (err) {
+    vscode.window.showErrorMessage(`Posting to Jira failed: ${(err as Error).message}`);
   }
 }
 
