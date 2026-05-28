@@ -25,6 +25,7 @@
       { "command": "worklog.openSettings", "title": "Worklog: Open management panel" },
       { "command": "worklog.startTicket", "title": "Worklog: Start working on a ticket" },
       { "command": "worklog.updateNow", "title": "Worklog: Write Jira update now" },
+      { "command": "worklog.writeAboutLastCommit", "title": "Worklog: Write update about last commit" },
       { "command": "worklog.postCurrentDraft", "title": "Worklog: Post current draft to Jira", "icon": "$(check)" },
       { "command": "worklog.manageJira", "title": "Worklog: Manage Jira connection" },
       { "command": "worklog.setApiKey", "title": "Worklog: Set NVIDIA NIM API key" },
@@ -81,6 +82,11 @@
           "type": "string",
           "default": "meta/llama-3.1-8b-instruct",
           "description": "Model to use for summary generation."
+        },
+        "worklog.updateStyle": {
+          "type": "string",
+          "default": "",
+          "description": "Extra instructions appended to the AI prompt to control the tone and formatting of generated updates (e.g. 'Formal tone, no emojis, start with a TL;DR line')."
         },
         "worklog.jira.baseUrl": {
           "type": "string",

@@ -54,3 +54,13 @@ export async function collectEvidence(cwd: string, sinceMinutes: number): Promis
   const diff = rawDiff.length > 24000 ? rawDiff.slice(0, 24000) + '\n…(diff truncated)…' : rawDiff;
   return { branch, statText, commits, diff };
 }
+
+/** Evidence for the single most recent commit (message + diffstat + patch). */
+export async function collectLastCommitEvidence(cwd: string): Promise<GitEvidence> {
+  const branch = await getBranch(cwd);
+  const commits = (await git(cwd, ['log', '-1', '--pretty=format:%h %s%n%b'])).trim();
+  const statText = (await git(cwd, ['show', 'HEAD', '--stat', '--format='])).trim();
+  const rawDiff = await git(cwd, ['show', 'HEAD', '--patch', '--format='], 8 * 1024 * 1024);
+  const diff = rawDiff.length > 24000 ? rawDiff.slice(0, 24000) + '\n…(diff truncated)…' : rawDiff;
+  return { branch, statText, commits, diff };
+}

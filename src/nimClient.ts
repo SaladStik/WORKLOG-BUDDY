@@ -78,10 +78,15 @@ export function buildPrompt(
   activeMinutes: number,
   filesTouched: string[],
   evidence: { statText: string; commits: string; diff: string },
+  style?: string,
 ): string {
   const fileList = filesTouched.length
     ? filesTouched.map((f) => `- ${f}`).join('\n')
     : '(none tracked)';
+
+  const styleLine = style?.trim()
+    ? ['', `Style & formatting instructions (follow these closely): ${style.trim()}`]
+    : [];
 
   return [
     `Write a work-log summary for Jira ticket ${issueKey}.`,
@@ -106,5 +111,6 @@ export function buildPrompt(
     '2. A **Changes by file** section: one bullet per changed file as `path` — what changed and why.',
     '   Group trivially-related files if there are many. Base every point on the diff above.',
     'Keep each bullet to one or two lines. Do not invent changes not present in the diff.',
+    ...styleLine,
   ].join('\n');
 }

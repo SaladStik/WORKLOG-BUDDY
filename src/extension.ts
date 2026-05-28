@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { ActivityTracker } from './activityTracker';
-import { collectEvidence, getBranch, getHeadSha, parseJiraKey } from './gitInfo';
+import { collectEvidence, collectLastCommitEvidence, getBranch, getHeadSha, parseJiraKey } from './gitInfo';
 import { buildPrompt, summarizeStream, NimConfig } from './nimClient';
 import {
   addWorklog,
@@ -77,6 +77,14 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('worklog.postCurrentDraft', () =>
       runExclusive(() => postCurrentDraft(context)),
+    ),
+    vscode.commands.registerCommand('worklog.writeAboutLastCommit', () =>
+      runExclusive(async () => {
+        const ticket = getActiveTicket(context) ?? (await startTicket(context));
+        if (ticket) {
+          await generateAndReview(context, ticket, 'lastCommit');
+        }
+      }),
     ),
 
     // Show the title-bar checkmark only when the active editor is a worklog draft.
@@ -234,21 +242,45 @@ async function checkTriggers(context: vscode.ExtensionContext): Promise<void> {
   }
 }
 
+/**
+ * Like showInformationMessage, but resolves to undefined if the user ignores it for
+ * `timeoutMs`. Without this, an ignored notification keeps the `busy` lock held and
+ * blocks every future nudge; with it, an ignored prompt auto-snoozes and re-prompts
+ * after the snooze window.
+ */
+async function askWithTimeout(
+  message: string,
+  timeoutMs: number,
+  ...items: string[]
+): Promise<string | undefined> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), timeoutMs);
+  });
+  try {
+    return await Promise.race([vscode.window.showInformationMessage(message, ...items), timeout]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 async function promptNoTicket(
   context: vscode.ExtensionContext,
   mins: number,
   edits: number,
 ): Promise<void> {
-  const choice = await vscode.window.showInformationMessage(
-    "Yo — you've been coding for a while. What Jira ticket is this?",
-    { detail: `${Math.round(mins)} active min · ${edits} edits`, modal: false },
+  const choice = await askWithTimeout(
+    `Yo — you've been coding for a while (${Math.round(mins)} min · ${edits} edits). What Jira ticket is this?`,
+    60_000,
     'Pick ticket',
     'Snooze',
   );
   if (choice === 'Pick ticket') {
     await startTicket(context);
   } else {
-    snooze();
+    snooze(); // Snooze, dismiss, or ignored-and-timed-out → quiet, then re-prompt later.
   }
 }
 
@@ -257,8 +289,9 @@ async function nudge(
   ticket: string,
   reason: string,
 ): Promise<void> {
-  const choice = await vscode.window.showInformationMessage(
+  const choice = await askWithTimeout(
     `${reason} on ${ticket}. Write a Jira update?`,
+    60_000,
     'Write update',
     'Snooze',
     'Switch ticket',
@@ -268,7 +301,7 @@ async function nudge(
   } else if (choice === 'Switch ticket') {
     await startTicket(context);
   } else {
-    snooze();
+    snooze(); // Snooze, dismiss, or ignored-and-timed-out → quiet, then re-prompt later.
   }
 }
 
@@ -352,7 +385,11 @@ async function enterTicketManually(guess: string | undefined): Promise<string | 
 // Generate → review → approve → post
 // ---------------------------------------------------------------------------
 
-async function generateAndReview(context: vscode.ExtensionContext, ticket: string): Promise<void> {
+async function generateAndReview(
+  context: vscode.ExtensionContext,
+  ticket: string,
+  mode: 'session' | 'lastCommit' = 'session',
+): Promise<void> {
   const cfg = vscode.workspace.getConfiguration('worklog');
   const apiKey = await context.secrets.get(NIM_KEY_SECRET);
   if (!apiKey) {
@@ -382,8 +419,13 @@ async function generateAndReview(context: vscode.ExtensionContext, ticket: strin
   const streamed = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Window, title: `Drafting ${ticket}…` },
     async () => {
-      const evidence = await collectEvidence(folder, sinceMinutes);
-      const prompt = buildPrompt(ticket, Math.round(snap.activeSeconds / 60), snap.filesTouched, evidence);
+      const evidence =
+        mode === 'lastCommit'
+          ? await collectLastCommitEvidence(folder)
+          : await collectEvidence(folder, sinceMinutes);
+      const files = mode === 'lastCommit' ? [] : snap.filesTouched;
+      const style = cfg.get<string>('updateStyle', '');
+      const prompt = buildPrompt(ticket, Math.round(snap.activeSeconds / 60), files, evidence, style);
       const nim: NimConfig = {
         baseUrl: cfg.get<string>('nim.baseUrl', 'https://integrate.api.nvidia.com/v1'),
         model: cfg.get<string>('nim.model', 'meta/llama-3.1-8b-instruct'),
@@ -611,6 +653,7 @@ class SettingsViewProvider implements vscode.WebviewViewProvider {
         nimApiKey: '',
         nimBaseUrl: cfg.get('nim.baseUrl', 'https://integrate.api.nvidia.com/v1'),
         nimModel: cfg.get('nim.model', 'meta/llama-3.1-8b-instruct'),
+        updateStyle: cfg.get('updateStyle', ''),
         autoNudge: cfg.get('autoNudge', true),
         workThresholdMinutes: cfg.get('workThresholdMinutes', 25),
         updateReminderMinutes: cfg.get('updateReminderMinutes', 20),
@@ -648,6 +691,9 @@ class SettingsViewProvider implements vscode.WebviewViewProvider {
       case 'writeUpdateNow':
         await vscode.commands.executeCommand('worklog.updateNow');
         break;
+      case 'writeAboutLastCommit':
+        await vscode.commands.executeCommand('worklog.writeAboutLastCommit');
+        break;
       case 'resetSession':
         tracker.reset();
         this.pushSession();
@@ -662,6 +708,7 @@ class SettingsViewProvider implements vscode.WebviewViewProvider {
     await cfg.update('jira.email', (s.jiraEmail as string) ?? '', G);
     await cfg.update('nim.baseUrl', (s.nimBaseUrl as string) ?? '', G);
     await cfg.update('nim.model', (s.nimModel as string) ?? '', G);
+    await cfg.update('updateStyle', (s.updateStyle as string) ?? '', G);
     await cfg.update('autoNudge', !!s.autoNudge, G);
     await cfg.update('workThresholdMinutes', Number(s.workThresholdMinutes) || 25, G);
     await cfg.update('updateReminderMinutes', Number(s.updateReminderMinutes) || 20, G);
@@ -736,7 +783,14 @@ class SettingsViewProvider implements vscode.WebviewViewProvider {
     border: 1px solid var(--vscode-input-border);
     font: inherit; outline: none;
   }
-  input:focus { border-color: var(--vscode-focusBorder); }
+  input:focus, textarea:focus { border-color: var(--vscode-focusBorder); }
+  textarea {
+    width: 100%; box-sizing: border-box; padding: 5px 7px; resize: vertical;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    font: inherit; outline: none;
+  }
   button {
     padding: 5px 10px; font: inherit; cursor: pointer;
     background: var(--vscode-button-secondaryBackground);
@@ -801,6 +855,9 @@ class SettingsViewProvider implements vscode.WebviewViewProvider {
     <button id="switchTicket">Switch</button>
     <button id="writeUpdateNow" class="primary">Write update</button>
   </div>
+  <div class="row" style="margin-top:6px;">
+    <button id="writeLastCommit">Write about last commit</button>
+  </div>
   <div class="stats">
     <span class="badge" id="statMins">0 min active</span>
     <span class="badge" id="statEdits">0 edits</span>
@@ -852,6 +909,19 @@ class SettingsViewProvider implements vscode.WebviewViewProvider {
 <hr/>
 
 <section>
+  <h2>Message style</h2>
+  <div class="row" style="flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+    <button class="preset" data-style="Concise, factual bullet points. No emojis.">Concise</button>
+    <button class="preset" data-style="Formal, professional tone in full sentences. No emojis.">Formal</button>
+    <button class="preset" data-style="Casual, friendly tone. A few relevant emojis are fine.">Casual</button>
+    <button class="preset" data-style="Start with a one-line TL;DR, then a detailed breakdown grouped by file with rationale.">Detailed</button>
+  </div>
+  <textarea id="updateStyle" rows="3" placeholder="e.g. Formal tone, no emojis, start with a TL;DR line."></textarea>
+  <div class="helper">Appended to the AI prompt to control tone &amp; formatting of generated updates.</div>
+</section>
+<hr/>
+
+<section>
   <h2>Nudge behavior</h2>
   <div class="toggleRow">
     <span>Automatic nudges</span>
@@ -880,7 +950,7 @@ class SettingsViewProvider implements vscode.WebviewViewProvider {
 (function() {
   const vscode = acquireVsCodeApi();
   const $ = (id) => document.getElementById(id);
-  const fields = ['jiraBaseUrl','jiraEmail','jiraToken','nimApiKey','nimBaseUrl','nimModel',
+  const fields = ['jiraBaseUrl','jiraEmail','jiraToken','nimApiKey','nimBaseUrl','nimModel','updateStyle',
                   'workThresholdMinutes','updateReminderMinutes','idleTimeoutMinutes','snoozeMinutes'];
   const toggles = ['autoNudge','remindOnCommit'];
   let selectedTicket = null;
@@ -954,6 +1024,9 @@ class SettingsViewProvider implements vscode.WebviewViewProvider {
   document.querySelectorAll('[data-toggle-switch]').forEach(t => {
     t.addEventListener('click', () => t.classList.toggle('on'));
   });
+  document.querySelectorAll('.preset').forEach(b => {
+    b.addEventListener('click', () => { $('updateStyle').value = b.getAttribute('data-style'); });
+  });
 
   $('save').addEventListener('click', () =>
     vscode.postMessage({ type: 'save', settings: gather() }));
@@ -966,6 +1039,8 @@ class SettingsViewProvider implements vscode.WebviewViewProvider {
     vscode.postMessage({ type: 'switchTicket' }));
   $('writeUpdateNow').addEventListener('click', () =>
     vscode.postMessage({ type: 'writeUpdateNow' }));
+  $('writeLastCommit').addEventListener('click', () =>
+    vscode.postMessage({ type: 'writeAboutLastCommit' }));
   $('resetSession').addEventListener('click', () =>
     vscode.postMessage({ type: 'resetSession' }));
 
