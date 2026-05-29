@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import {
-  getFolder,
+  getRepoFolder,
   getJiraConfig,
   getNimApiKey,
   getNimEndpoint,
@@ -8,7 +8,12 @@ import {
   setSecret,
   NIM_KEY_SECRET,
 } from '../core/config';
-import { collectEvidence, collectLastCommitEvidence, getCommitRef } from '../services/gitInfo';
+import {
+  collectEvidence,
+  collectCommitEvidence,
+  getCommitRef,
+  listRecentCommits,
+} from '../services/gitInfo';
 import { buildPrompt, summarizeStream, NimConfig } from '../services/nimClient';
 import { addWorklog, postComment, JiraConfig } from '../services/jira';
 import { SessionManager } from '../core/session';
@@ -30,6 +35,27 @@ function stripHeading(text: string): string {
   return text.replace(/^#.*\n+/, '').trim();
 }
 
+/**
+ * Parse a human duration into seconds: "1h 30m", "45m", "2h", or a bare number
+ * (treated as minutes). Returns undefined when the input is blank or unparseable.
+ */
+function parseDuration(input: string): number | undefined {
+  const s = input.trim().toLowerCase();
+  if (!s) {
+    return undefined;
+  }
+  if (/^\d+$/.test(s)) {
+    return parseInt(s, 10) * 60; // bare number = minutes
+  }
+  const h = s.match(/(\d+(?:\.\d+)?)\s*h/);
+  const m = s.match(/(\d+)\s*m/);
+  if (!h && !m) {
+    return undefined;
+  }
+  const total = (h ? parseFloat(h[1]) * 3600 : 0) + (m ? parseInt(m[1], 10) * 60 : 0);
+  return Math.round(total);
+}
+
 /** Generates, reviews and posts Jira updates (worklog + comment). */
 export class DraftService {
   constructor(
@@ -37,7 +63,60 @@ export class DraftService {
     private readonly session: SessionManager,
   ) {}
 
-  async generateAndReview(ticket: string, mode: DraftMode = 'session'): Promise<void> {
+  /**
+   * Let the user pick one of the recent commits, then draft an update about it.
+   * `commitRef` flows through `generateAndReview` so any commit (not just HEAD) works.
+   */
+  async writeAboutCommit(ticket: string): Promise<void> {
+    const folder = await getRepoFolder();
+    if (!folder) {
+      vscode.window.showWarningMessage(
+        'No git repository found. Open the folder that contains your repo (the one with the .git directory) and try again.',
+      );
+      return;
+    }
+    const commits = await listRecentCommits(folder, 30);
+    if (!commits.length) {
+      vscode.window.showWarningMessage('No commits found in this repository.');
+      return;
+    }
+    const items: (vscode.QuickPickItem & { sha: string })[] = commits.map((c) => ({
+      label: c.subject,
+      description: `${c.shortSha} · ${c.relative}`,
+      sha: c.sha,
+    }));
+    const sel = await vscode.window.showQuickPick(items, {
+      title: `Write update for ${ticket} — which commit?`,
+      placeHolder: 'Pick a commit to summarize',
+      matchOnDescription: true,
+    });
+    if (!sel) {
+      return;
+    }
+
+    // Optional: let the user log a specific amount of time against this commit.
+    // Blank → fall back to tracked session time; Esc → cancel the whole flow.
+    const timeStr = await vscode.window.showInputBox({
+      title: `Time to log on ${ticket} (optional)`,
+      prompt: 'How long did this take? e.g. 1h 30m, 45m, 2h. Leave blank to use tracked session time.',
+      placeHolder: 'e.g. 1h 30m',
+      ignoreFocusOut: true,
+      validateInput: (v) =>
+        !v.trim() || parseDuration(v) !== undefined ? undefined : 'Use formats like 1h, 30m, or 1h 30m',
+    });
+    if (timeStr === undefined) {
+      return; // cancelled
+    }
+    const loggedSeconds = parseDuration(timeStr);
+    await this.generateAndReview(ticket, 'lastCommit', sel.sha, loggedSeconds);
+  }
+
+  async generateAndReview(
+    ticket: string,
+    mode: DraftMode = 'session',
+    commitRef = 'HEAD',
+    loggedSecondsOverride?: number,
+  ): Promise<void> {
     const apiKey = await getNimApiKey(this.context);
     if (!apiKey) {
       const pick = await vscode.window.showWarningMessage('No NVIDIA NIM API key set.', 'Set key now');
@@ -46,9 +125,11 @@ export class DraftService {
       }
       return;
     }
-    const folder = getFolder();
+    const folder = await getRepoFolder();
     if (!folder) {
-      vscode.window.showWarningMessage('Open a folder/repo to generate a worklog update.');
+      vscode.window.showWarningMessage(
+        'No git repository found. Open the folder that contains your repo (the one with the .git directory) and try again.',
+      );
       return;
     }
 
@@ -75,7 +156,7 @@ export class DraftService {
       async () => {
         const evidence =
           mode === 'lastCommit'
-            ? await collectLastCommitEvidence(folder)
+            ? await collectCommitEvidence(folder, commitRef)
             : await collectEvidence(folder, sinceMinutes);
         const files = mode === 'lastCommit' ? [] : snap.filesTouched;
         const prompt = buildPrompt(ticket, Math.round(snap.activeSeconds / 60), files, evidence, getUpdateStyle());
@@ -94,7 +175,7 @@ export class DraftService {
 
     // Append a deterministic commit reference (id + link) so it's always accurate.
     if (mode === 'lastCommit') {
-      const ref = await getCommitRef(folder);
+      const ref = await getCommitRef(folder, commitRef);
       if (ref) {
         await appendToDoc(
           ref.url ? `\n\n---\nCommit ${ref.shortSha} — ${ref.url}` : `\n\n---\nCommit ${ref.shortSha}`,
@@ -121,7 +202,7 @@ export class DraftService {
       vscode.window.showInformationMessage('Update copied to clipboard.');
       this.session.markUpdated();
     } else if (choice === 'Approve & post' && jira) {
-      await this.post(jira, ticket, finalText, snap.activeSeconds);
+      await this.post(jira, ticket, finalText, loggedSecondsOverride ?? snap.activeSeconds);
     }
     // "Edit first" or Cancel: doc stays open; user runs `worklog.postCurrentDraft` when ready.
   }

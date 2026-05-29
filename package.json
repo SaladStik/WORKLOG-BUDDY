@@ -7,29 +7,70 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
-        { "id": "worklog", "title": "Worklog Buddy", "icon": "media/icon.svg" }
+        {
+          "id": "worklog",
+          "title": "Worklog Buddy",
+          "icon": "media/icon.svg"
+        }
       ]
     },
     "views": {
       "worklog": [
-        { "id": "worklog.settingsView", "type": "webview", "name": "Manage" }
+        {
+          "id": "worklog.settingsView",
+          "type": "webview",
+          "name": "Manage"
+        }
       ]
     },
     "commands": [
-      { "command": "worklog.openSettings", "title": "Worklog: Open management panel" },
-      { "command": "worklog.startTicket", "title": "Worklog: Start working on a ticket" },
-      { "command": "worklog.updateNow", "title": "Worklog: Write Jira update now" },
-      { "command": "worklog.writeAboutLastCommit", "title": "Worklog: Write update about last commit" },
-      { "command": "worklog.postCurrentDraft", "title": "Worklog: Post current draft to Jira", "icon": "$(check)" },
-      { "command": "worklog.manageJira", "title": "Worklog: Manage Jira connection" },
-      { "command": "worklog.setApiKey", "title": "Worklog: Set NVIDIA NIM API key" },
-      { "command": "worklog.resetSession", "title": "Worklog: Reset activity session" }
+      {
+        "command": "worklog.openSettings",
+        "title": "Worklog: Open management panel"
+      },
+      {
+        "command": "worklog.startTicket",
+        "title": "Worklog: Start working on a ticket"
+      },
+      {
+        "command": "worklog.updateNow",
+        "title": "Worklog: Write Jira update now"
+      },
+      {
+        "command": "worklog.writeAboutLastCommit",
+        "title": "Worklog: Write update about last commit"
+      },
+      {
+        "command": "worklog.writeAboutCommit",
+        "title": "Worklog: Write update about a specific commit"
+      },
+      {
+        "command": "worklog.postCurrentDraft",
+        "title": "Worklog: Post current draft to Jira",
+        "icon": "$(check)"
+      },
+      {
+        "command": "worklog.manageJira",
+        "title": "Worklog: Manage Jira connection"
+      },
+      {
+        "command": "worklog.setApiKey",
+        "title": "Worklog: Set NVIDIA NIM API key"
+      },
+      {
+        "command": "worklog.resetSession",
+        "title": "Worklog: Reset activity session"
+      }
     ],
     "menus": {
       "editor/title": [
@@ -104,6 +145,7 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "package": "vsce package --skip-license --allow-missing-repository --out worklog-buddy.vsix",
     "vscode:prepublish": "npm run compile"
   },
   "dependencies": {
@@ -112,6 +154,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.1",
     "typescript": "^5.4.0"
   }
 }

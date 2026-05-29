@@ -9,3 +9,5 @@ tsconfig.json
 secrets*
 smoke-test.mjs
 node_modules/.cache/**
+.github/**
+image.png

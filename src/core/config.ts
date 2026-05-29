@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import type { JiraConfig } from '../services/jira';
+import { findRepoRoot } from '../services/gitInfo';
 
 export const NIM_KEY_SECRET = 'worklog.nimApiKey';
 export const JIRA_TOKEN_SECRET = 'worklog.jiraToken';
@@ -11,6 +13,31 @@ export function cfg(): vscode.WorkspaceConfiguration {
 /** Absolute path of the first workspace folder, or undefined when none is open. */
 export function getFolder(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+/**
+ * Resolve the git repository to operate on. Tries the active editor's file first
+ * (so a nested or multi-root repo is found), then each workspace folder, and
+ * returns the actual repo root (`--show-toplevel`). This is what git commands
+ * should use — `getFolder()` alone breaks when the opened folder isn't the repo
+ * root (parent folder opened, repo in a subfolder, or multi-root workspace).
+ */
+export async function getRepoFolder(): Promise<string | undefined> {
+  const candidates: string[] = [];
+  const active = vscode.window.activeTextEditor?.document.uri;
+  if (active?.scheme === 'file') {
+    candidates.push(path.dirname(active.fsPath));
+  }
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    candidates.push(folder.uri.fsPath);
+  }
+  for (const dir of candidates) {
+    const root = await findRepoRoot(dir);
+    if (root) {
+      return root;
+    }
+  }
+  return undefined;
 }
 
 /** Full Jira config (settings + token) or undefined if any part is missing. */

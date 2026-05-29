@@ -159,6 +159,7 @@ export function getPanelHtml(webview: vscode.Webview): string {
     <div class="btns">
       <button class="primary block" id="writeUpdateNow">Write update</button>
       <button class="block" id="writeLastCommit">Write about last commit</button>
+      <button class="block" id="writeAboutCommit">Write about a specific commit…</button>
       <div class="row">
         <button class="grow" id="switchTicket">Switch ticket</button>
         <button class="grow" id="resetSession">Reset session</button>
@@ -204,6 +205,10 @@ export function getPanelHtml(webview: vscode.Webview): string {
     <input type="text" id="nimBaseUrl" />
     <label>Model</label>
     <input type="text" id="nimModel" />
+    <div class="row" style="margin-top:10px;">
+      <button id="testNim">Test NIM</button>
+      <span id="nimStatus" class="status">Not tested</span>
+    </div>
   </div>
 
   <div class="card">
@@ -311,6 +316,11 @@ export function getPanelHtml(webview: vscode.Webview): string {
       else if (m.state === 'ok') setConn('ok','Connected as ' + (m.name || 'user'));
       else if (m.state === 'error') setConn('error', m.error || 'Connection failed');
       else setConn('idle','Not connected');
+    } else if (m.type === 'nimStatus') {
+      const el = $('nimStatus');
+      if (m.state === 'connecting') { el.className = 'status'; el.textContent = 'Testing…'; }
+      else if (m.state === 'ok') { el.className = 'status ok'; el.textContent = '✓ ' + (m.model || 'NIM reachable'); }
+      else if (m.state === 'error') { el.className = 'status error'; el.textContent = m.error || 'Test failed'; }
     } else if (m.type === 'tickets') renderTickets(m.items || []);
     else if (m.type === 'saved') {
       const s = $('savedMsg'); s.classList.add('show');
@@ -343,10 +353,13 @@ export function getPanelHtml(webview: vscode.Webview): string {
   $('save').addEventListener('click', () => vscode.postMessage({ type: 'save', settings: gather() }));
   $('testConnection').addEventListener('click', () => vscode.postMessage({ type: 'testConnection',
     jiraBaseUrl: $('jiraBaseUrl').value, jiraEmail: $('jiraEmail').value, jiraToken: $('jiraToken').value }));
+  $('testNim').addEventListener('click', () => vscode.postMessage({ type: 'testNim',
+    nimApiKey: $('nimApiKey').value, nimBaseUrl: $('nimBaseUrl').value, nimModel: $('nimModel').value }));
   $('refreshTickets').addEventListener('click', () => vscode.postMessage({ type: 'refreshTickets' }));
   $('switchTicket').addEventListener('click', () => vscode.postMessage({ type: 'switchTicket' }));
   $('writeUpdateNow').addEventListener('click', () => vscode.postMessage({ type: 'writeUpdateNow' }));
   $('writeLastCommit').addEventListener('click', () => vscode.postMessage({ type: 'writeAboutLastCommit' }));
+  $('writeAboutCommit').addEventListener('click', () => vscode.postMessage({ type: 'writeAboutCommit' }));
   $('resetSession').addEventListener('click', () => vscode.postMessage({ type: 'resetSession' }));
 
   vscode.postMessage({ type: 'ready' });

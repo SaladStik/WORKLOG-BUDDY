@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { cfg, getFolder } from './config';
+import { cfg, getRepoFolder } from './config';
 import { getHeadSha } from '../services/gitInfo';
 import { isBusy, runExclusive } from './lock';
 import { SessionManager } from './session';
@@ -48,10 +48,11 @@ export class ReminderService {
 
   start(): void {
     // Prime the commit detector so the first tick can't fire a false "you committed".
-    const folder = getFolder();
-    if (folder) {
-      void getHeadSha(folder).then((sha) => (this.lastHeadSha = sha));
-    }
+    void getRepoFolder().then((folder) => {
+      if (folder) {
+        void getHeadSha(folder).then((sha) => (this.lastHeadSha = sha));
+      }
+    });
     this.timer = setInterval(() => void this.tick(), TICK_INTERVAL_MS);
   }
 
@@ -76,7 +77,7 @@ export class ReminderService {
 
     // Detect new commits even while busy/snoozed so lastHeadSha stays current.
     let committed = false;
-    const folder = getFolder();
+    const folder = await getRepoFolder();
     if (folder) {
       const head = await getHeadSha(folder);
       if (head) {

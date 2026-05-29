@@ -5,8 +5,10 @@ import {
   readPanelSettings,
   savePanelSettings,
   JIRA_TOKEN_SECRET,
+  NIM_KEY_SECRET,
 } from '../core/config';
 import { searchAssignedIssues, testConnection } from '../services/jira';
+import { testNim } from '../services/nimClient';
 import { SessionManager } from '../core/session';
 import { getPanelHtml } from './panelHtml';
 
@@ -61,6 +63,11 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
           msg as unknown as { jiraBaseUrl: string; jiraEmail: string; jiraToken: string },
         );
         break;
+      case 'testNim':
+        await this.testNimConnection(
+          msg as unknown as { nimBaseUrl: string; nimModel: string; nimApiKey: string },
+        );
+        break;
       case 'refreshTickets':
         await this.refreshTickets();
         break;
@@ -77,6 +84,9 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'writeAboutLastCommit':
         await vscode.commands.executeCommand('worklog.writeAboutLastCommit');
+        break;
+      case 'writeAboutCommit':
+        await vscode.commands.executeCommand('worklog.writeAboutCommit');
         break;
       case 'resetSession':
         this.session.resetSession();
@@ -121,6 +131,28 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
       await this.refreshTickets();
     } catch (err) {
       this.post({ type: 'connectionStatus', state: 'error', error: (err as Error).message });
+    }
+  }
+
+  /** Verify the NIM key/model with a tiny request. Falls back to the stored key. */
+  private async testNimConnection(msg: {
+    nimBaseUrl: string;
+    nimModel: string;
+    nimApiKey: string;
+  }): Promise<void> {
+    const apiKey = msg.nimApiKey || (await this.context.secrets.get(NIM_KEY_SECRET)) || '';
+    const baseUrl = msg.nimBaseUrl || 'https://integrate.api.nvidia.com/v1';
+    const model = msg.nimModel || 'meta/llama-3.1-8b-instruct';
+    if (!apiKey) {
+      this.post({ type: 'nimStatus', state: 'error', error: 'Enter your NIM API key first.' });
+      return;
+    }
+    this.post({ type: 'nimStatus', state: 'connecting' });
+    try {
+      const m = await testNim({ apiKey, baseUrl, model });
+      this.post({ type: 'nimStatus', state: 'ok', model: m });
+    } catch (err) {
+      this.post({ type: 'nimStatus', state: 'error', error: (err as Error).message });
     }
   }
 

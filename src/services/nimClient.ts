@@ -13,6 +13,23 @@ const SYSTEM_PROMPT =
   'and why. No preamble, no fluff, no invented changes — only what the diff shows.';
 
 /**
+ * Verifies the NIM endpoint, key and model with a minimal 1-token request.
+ * Returns the model name on success; throws with the API error message otherwise.
+ */
+export async function testNim(cfg: NimConfig): Promise<string> {
+  const client = new OpenAI({ apiKey: cfg.apiKey, baseURL: cfg.baseUrl });
+  const params = {
+    model: cfg.model,
+    messages: [{ role: 'user', content: 'ping' }],
+    max_tokens: 1,
+    chat_template_kwargs: { thinking: false },
+    stream: false,
+  } as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
+  await client.chat.completions.create(params);
+  return cfg.model;
+}
+
+/**
  * Calls the NVIDIA NIM OpenAI-compatible endpoint and returns the full summary text.
  * `chat_template_kwargs` is a NIM-specific extra body field, so the params object is
  * cast — the OpenAI SDK forwards unknown fields to the request body.

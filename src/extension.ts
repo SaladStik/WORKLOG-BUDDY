@@ -63,6 +63,14 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       }),
     ),
+    vscode.commands.registerCommand('worklog.writeAboutCommit', () =>
+      runExclusive(async () => {
+        const ticket = session.getActiveTicket() ?? (await tickets.startTicket());
+        if (ticket) {
+          await draft.writeAboutCommit(ticket);
+        }
+      }),
+    ),
     vscode.commands.registerCommand('worklog.postCurrentDraft', () =>
       runExclusive(() => draft.postCurrentDraft()),
     ),
