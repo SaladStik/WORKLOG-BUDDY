@@ -4,6 +4,10 @@
   "description": "Pick a Jira ticket, then get nudged to post AI-written updates based on what you actually did in VS Code.",
   "version": "0.0.1",
   "publisher": "hackathon",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SaladStik/WORKLOG-BUDDY.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
