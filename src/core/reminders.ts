@@ -75,7 +75,14 @@ export class ReminderService {
       return;
     }
 
-    // Detect new commits even while busy/snoozed so lastHeadSha stays current.
+    // Never stack a nudge on top of a flow the user is already in. We bail *before*
+    // touching lastHeadSha so a commit made mid-review isn't swallowed — it'll be
+    // detected on the next free tick instead of silently advancing the pointer.
+    if (isBusy()) {
+      return;
+    }
+
+    // Detect a new commit since we last looked.
     let committed = false;
     const folder = await getRepoFolder();
     if (folder) {
@@ -88,20 +95,23 @@ export class ReminderService {
       }
     }
 
-    if (isBusy() || Date.now() < this.snoozeUntil) {
-      return;
-    }
-
     const ticket = this.session.getActiveTicket();
     const snap = this.session.snapshot();
     const mins = snap.activeSeconds / 60;
 
+    // A fresh commit is an explicit action — always prompt once for it, even during a
+    // snooze. (The snooze is meant to throttle the time-based nudge, not commits.)
     if (committed && c.get<boolean>('remindOnCommit', true)) {
       if (ticket) {
         await runExclusive(() => this.nudge(ticket, 'You just committed', 'lastCommit'));
       } else {
         await runExclusive(() => this.promptNoTicket(mins, snap.editCount));
       }
+      return;
+    }
+
+    // Time-based nudges stay quiet during a snooze.
+    if (Date.now() < this.snoozeUntil) {
       return;
     }
 
