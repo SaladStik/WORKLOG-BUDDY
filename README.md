@@ -1,3 +1,4 @@
+written for a cursor meetup in like 45 mins
 # Worklog Buddy
 
 Worklog Buddy lives right in your editor and quietly keeps your Jira tickets up to date
