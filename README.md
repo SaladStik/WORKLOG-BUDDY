@@ -1,25 +1,42 @@
-written for a cursor meetup in like 45 mins
 # Worklog Buddy
 
-Worklog Buddy lives right in your editor and quietly keeps your Jira tickets up to date
-for you. It watches when you're **actually coding** (not just leaving VS Code open), and
-when you've done real work — or just made a commit — it offers to **write the Jira update
-for you**: a worklog entry plus a comment, drafted from your actual `git diff` by
-**NVIDIA NIM**.
+**Keep your Jira tickets up to date without thinking about it.**
+
+Worklog Buddy lives right in your editor and quietly keeps your Jira tickets current for
+you. It watches when you're **actually coding** (not just leaving VS Code open), and when
+you've done real work — or just made a commit — it offers to **write the Jira update for
+you**: a worklog entry plus a comment, drafted from your actual `git diff` by **NVIDIA
+NIM**.
 
 It's built to help without getting in the way. Nudges are occasional, easy to snooze, and
-never post anything on their own — you always review and approve first. No leaving your
-editor, no context-switching to Jira, no end-of-day "wait, what did I even do today?"
+**nothing is ever posted on its own — you always review and approve first.** No leaving
+your editor, no context-switching to Jira, no end-of-day "wait, what did I even do today?"
+
+### What you get
+- ⏱️ **Real activity tracking** — counts time you're actually editing, ignores idle windows.
+- 🔔 **Smart nudges** — after a chunk of work or right after a commit, never naggy.
+- 🤖 **AI-drafted updates** — written from your real diff, streamed in live, fully editable.
+- ✅ **You stay in control** — review every update before it posts a worklog entry + comment.
+- 🎯 **Per-commit summaries** — write an update about any commit, and log the time you spent.
 
 ---
 
 ## 5-minute setup
 
 ### 1. Install the extension (~1 min)
-Either:
-- **From the packaged file:** `Cmd+Shift+P` → **Extensions: Install from VSIX…** → pick
-  `worklog-buddy-0.0.1.vsix`, then **reload the window**.
-- **From source (dev):** open this folder in VS Code → `npm install` → press **F5**.
+
+**Recommended — install the released `.vsix` file:**
+1. Go to the [**Releases** page](https://github.com/SaladStik/WORKLOG-BUDDY/releases)
+   and download the latest `worklog-buddy.vsix` from the newest release's **Assets**.
+2. In VS Code: `Cmd+Shift+P` → **Extensions: Install from VSIX…** → pick the file you
+   just downloaded.
+
+> You can also do this without the command palette: open the **Extensions** view
+> (`Cmd+Shift+X`), click the **⋯** menu at the top, and choose **Install from VSIX…**.
+
+**Alternative — run from source (for development):**
+open this folder in VS Code → `npm install` → press **F5** to launch an Extension
+Development Host.
 
 After installing, reload: `Cmd+Shift+P` → **Developer: Reload Window**.
 
@@ -38,7 +55,11 @@ Click the **clock icon** in the left Activity Bar. The **Worklog Buddy → Manag
 
 ### 4. Add your NIM key (~1 min)
 In the **NVIDIA NIM** section, paste your API key (`nvapi-…`). Leave the base URL and
-model as-is (`meta/llama-3.1-8b-instruct` is fast and fine for summaries). Click **Save**.
+model as-is (`meta/llama-3.1-8b-instruct` is fast and fine for summaries). Click **Test
+NIM** to confirm the key works (it shows `✓ <model>`), then click **Save**.
+
+> Don't have a key? Get one free at **https://build.nvidia.com** — open any model and
+> click **Get API Key**.
 
 ### 5. Start working (~30 sec)
 Click one of your tickets in the **Assigned tickets** list to make it active. Now just
@@ -106,10 +127,16 @@ Open with `Cmd+Shift+P`:
 - **Worklog: Open management panel** — the sidebar UI
 - **Worklog: Start working on a ticket** — pick / switch the active ticket
 - **Worklog: Write Jira update now** — draft + review + post on demand
+- **Worklog: Write update about last commit** — summarize your most recent commit
+- **Worklog: Write update about a specific commit** — pick any recent commit, and
+  optionally log how much time you spent on it
 - **Worklog: Post current draft** — post the draft document you've been editing
 - **Worklog: Manage Jira connection** — URL / email / token / test / switch
 - **Worklog: Set NVIDIA NIM API key**
 - **Worklog: Reset activity session**
+
+Everything here is also a button in the sidebar panel — most people never open the command
+palette at all.
 
 ## Where credentials live
 
@@ -150,8 +177,8 @@ Dependencies form a strict DAG: `services` + `core/config` → `core/session` �
 
 ```bash
 npm install
-npm run compile                                   # type-check + build to out/
-npx @vscode/vsce package --skip-license --allow-missing-repository   # → .vsix
+npm run compile     # type-check + build to out/
+npm run package     # → worklog-buddy.vsix
 ```
 
 There's also `smoke-test.mjs` for verifying the NIM + Jira integrations outside VS Code:
@@ -159,3 +186,17 @@ There's also `smoke-test.mjs` for verifying the NIM + Jira integrations outside 
 ```bash
 node --env-file=.env smoke-test.mjs               # reads creds from a local .env (gitignored)
 ```
+
+## Releasing
+
+Releases are built automatically by GitHub Actions. Push a version tag and a GitHub
+Release with the packaged `.vsix` attached is created for you:
+
+```bash
+npm version patch   # bumps version + creates a commit and a v0.0.2 tag
+git push --follow-tags
+```
+
+The [`.github/workflows/release.yml`](.github/workflows/release.yml) workflow compiles,
+packages, and publishes the `.vsix` to the [Releases page](https://github.com/SaladStik/WORKLOG-BUDDY/releases).
+You can also trigger it manually from the repo's **Actions** tab.
