@@ -1,5 +1,3 @@
-import * as vscode from 'vscode';
-
 export interface ActivitySnapshot {
   /** Accumulated active seconds since the last reset (idle gaps excluded). */
   activeSeconds: number;
@@ -22,6 +20,12 @@ export interface ActivitySnapshot {
  * Counters are cumulative until reset(); the extension resets them whenever a ticket
  * is selected or an update is posted, so a snapshot always means "since the last
  * Jira update on the active ticket".
+ *
+ * This class is event-source agnostic: it does not subscribe to VS Code events
+ * itself. The {@link RepoRegistry} owns a single set of subscriptions and routes
+ * each event to the right repo's tracker via {@link recordEdit}/{@link recordPresence}/
+ * {@link setFocused}. That routing is what makes per-repo time tracking possible in a
+ * multi-root workspace.
  */
 export class ActivityTracker {
   private activeSeconds = 0;
@@ -31,37 +35,31 @@ export class ActivityTracker {
   private windowFocused: boolean;
 
   private readonly idleTimeoutMs: number;
-  private readonly disposables: vscode.Disposable[] = [];
 
-  constructor(idleTimeoutMinutes: number) {
+  constructor(idleTimeoutMinutes: number, focused = true) {
     this.idleTimeoutMs = idleTimeoutMinutes * 60_000;
-    this.windowFocused = vscode.window.state.focused;
+    this.windowFocused = focused;
   }
 
-  start(): void {
-    this.disposables.push(
-      // Strong signal: actual edits.
-      vscode.workspace.onDidChangeTextDocument((e) => {
-        if (e.contentChanges.length === 0) {
-          return;
-        }
-        if (e.document.uri.scheme === 'file') {
-          this.filesTouched.add(e.document.uri.fsPath);
-        }
-        this.heartbeat(true);
-      }),
-      // Weak signals: presence/navigation keep a session alive.
-      vscode.window.onDidChangeTextEditorSelection(() => this.heartbeat(false)),
-      vscode.window.onDidChangeActiveTextEditor(() => this.heartbeat(false)),
-      vscode.workspace.onDidSaveTextDocument(() => this.heartbeat(false)),
-      vscode.window.onDidChangeWindowState((s) => {
-        this.windowFocused = s.focused;
-        if (s.focused) {
-          // Reset the clock on refocus so away-time isn't counted.
-          this.lastHeartbeat = Date.now();
-        }
-      }),
-    );
+  /** Strong signal: a real edit. Records the touched file and beats the clock. */
+  recordEdit(fsPath?: string): void {
+    if (fsPath) {
+      this.filesTouched.add(fsPath);
+    }
+    this.heartbeat(true);
+  }
+
+  /** Weak signal: presence/navigation (selection, focus, save) keeps a session alive. */
+  recordPresence(): void {
+    this.heartbeat(false);
+  }
+
+  /** Apply a window focus change. On refocus, reset the clock so away-time isn't counted. */
+  setFocused(focused: boolean): void {
+    this.windowFocused = focused;
+    if (focused) {
+      this.lastHeartbeat = Date.now();
+    }
   }
 
   private heartbeat(isEdit: boolean): void {
@@ -95,9 +93,5 @@ export class ActivityTracker {
     this.editCount = 0;
     this.filesTouched.clear();
     this.lastHeartbeat = 0;
-  }
-
-  dispose(): void {
-    this.disposables.forEach((d) => d.dispose());
   }
 }

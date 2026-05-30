@@ -1,66 +1,90 @@
 import * as vscode from 'vscode';
-import { ActivityTracker, ActivitySnapshot } from '../services/activityTracker';
+import { ActivitySnapshot } from '../services/activityTracker';
+import { RepoRegistry } from './repos';
 
-const ACTIVE_TICKET_KEY = 'worklog.activeTicket';
+const EMPTY_SNAPSHOT: ActivitySnapshot = {
+  activeSeconds: 0,
+  editCount: 0,
+  filesTouched: [],
+  lastActivity: 0,
+};
 
 /**
- * Owns the active-ticket selection, the activity tracker, and the status-bar item.
- * Fires `onUpdated` whenever the ticket changes or an update is posted/reset, so the
- * reminder service can clear its snooze and the panel can refresh.
+ * Facade over the *current* repo in the {@link RepoRegistry}. The rest of the extension
+ * (ticket picker, draft service, panel, reminders) talks to one "active ticket" and one
+ * activity clock through this object — the registry decides which repo that maps to based
+ * on the active editor, so multi-root workspaces work without each caller knowing about
+ * repos. Fires `onUpdated` when the ticket changes or an update is posted/reset.
  */
 export class SessionManager implements vscode.Disposable {
   private readonly _onUpdated = new vscode.EventEmitter<void>();
   readonly onUpdated = this._onUpdated.event;
+  private readonly sub: vscode.Disposable;
 
   constructor(
-    private readonly context: vscode.ExtensionContext,
-    readonly tracker: ActivityTracker,
+    private readonly registry: RepoRegistry,
     private readonly status: vscode.StatusBarItem,
-  ) {}
+  ) {
+    // Re-emit registry changes (repos discovered, ticket set) as session updates.
+    this.sub = registry.onUpdated(() => {
+      this.refreshStatus();
+      this._onUpdated.fire();
+    });
+  }
 
   getActiveTicket(): string | undefined {
-    return this.context.workspaceState.get<string>(ACTIVE_TICKET_KEY);
+    return this.registry.activeTicket();
   }
 
   async setActiveTicket(key: string | undefined): Promise<void> {
-    await this.context.workspaceState.update(ACTIVE_TICKET_KEY, key);
-    this.tracker.reset(); // count time from "now" against the new ticket
+    await this.registry.setActiveTicket(key);
     this.refreshStatus();
     this._onUpdated.fire();
   }
 
+  /** Repo root that git commands should run against — the current repo. */
+  currentRepoFolder(): string | undefined {
+    return this.registry.current()?.root;
+  }
+
   /** Start a fresh window after posting so reminders/evidence cover only new work. */
   markUpdated(): void {
-    this.tracker.reset();
+    this.registry.current()?.tracker.reset();
     this.refreshStatus();
     this._onUpdated.fire();
   }
 
   resetSession(): void {
-    this.tracker.reset();
+    this.registry.current()?.tracker.reset();
     this.refreshStatus();
     this._onUpdated.fire();
   }
 
   snapshot(): ActivitySnapshot {
-    return this.tracker.snapshot();
+    return this.registry.current()?.tracker.snapshot() ?? EMPTY_SNAPSHOT;
   }
 
   refreshStatus(): void {
-    const ticket = this.getActiveTicket();
-    const mins = Math.round(this.tracker.snapshot().activeSeconds / 60);
+    const repo = this.registry.current();
+    const ticket = this.registry.activeTicket();
+    const mins = Math.round((repo?.tracker.snapshot().activeSeconds ?? 0) / 60);
+    // Only disambiguate by repo name when more than one repo is in play.
+    const prefix = this.registry.all().length > 1 && repo ? `${repo.name} · ` : '';
     if (ticket) {
-      this.status.text = `$(git-commit) ${ticket} · ${mins}m`;
-      this.status.tooltip = `Worklog: ${mins} active min since last update on ${ticket}. Click to write an update.`;
+      this.status.text = `$(git-commit) ${prefix}${ticket} · ${mins}m`;
+      this.status.tooltip = `Worklog: ${mins} active min since last update on ${ticket}${
+        repo ? ` (${repo.name})` : ''
+      }. Click to write an update.`;
       this.status.command = 'worklog.updateNow';
     } else {
-      this.status.text = '$(question) Worklog: set ticket';
+      this.status.text = `$(question) ${prefix}Worklog: set ticket`;
       this.status.tooltip = 'Worklog: click to pick the Jira ticket you are working on.';
       this.status.command = 'worklog.startTicket';
     }
   }
 
   dispose(): void {
+    this.sub.dispose();
     this._onUpdated.dispose();
   }
 }

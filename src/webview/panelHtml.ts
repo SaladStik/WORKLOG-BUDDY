@@ -96,6 +96,17 @@ export function getPanelHtml(webview: vscode.Webview): string {
 
   .ticket-hero { font-size: 16px; font-weight: 600; margin: 2px 0 10px; }
   .ticket-hero.none { opacity: 0.55; font-weight: 400; font-style: italic; }
+
+  /* Repo switcher — only shown in multi-root workspaces with more than one repo. */
+  .repoRow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .repoChip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px;
+    font-size: 11px; border-radius: 10px; cursor: pointer; border: 1px solid var(--vscode-input-border);
+    background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
+    transition: background 0.12s, border-color 0.12s; }
+  .repoChip:hover { background: var(--vscode-list-hoverBackground); }
+  .repoChip.active { border-color: var(--vscode-focusBorder);
+    background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+  .repoChip .rt { opacity: 0.7; }
   .stats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
   .badge { background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
     padding: 3px 9px; font-size: 11px; border-radius: 10px; }
@@ -150,6 +161,7 @@ export function getPanelHtml(webview: vscode.Webview): string {
 <div class="panel active" id="panel-activity">
   <div class="card">
     <h3>Current session</h3>
+    <div class="repoRow" id="repoRow" style="display:none"></div>
     <div class="ticket-hero none" id="activeTicket">No ticket selected</div>
     <div class="stats">
       <span class="badge" id="statMins">0 min active</span>
@@ -299,6 +311,30 @@ export function getPanelHtml(webview: vscode.Webview): string {
     }
   }
 
+  // Render the repo switcher only when more than one git repo is in the workspace.
+  function renderRepos(repos, currentRoot) {
+    const row = $('repoRow');
+    if (!repos || repos.length < 2) {
+      row.style.display = 'none';
+      row.innerHTML = '';
+      return;
+    }
+    row.style.display = 'flex';
+    row.innerHTML = '';
+    for (const r of repos) {
+      const chip = document.createElement('div');
+      chip.className = 'repoChip' + (r.root === currentRoot ? ' active' : '');
+      chip.innerHTML = '<span class="rn"></span><span class="rt"></span>';
+      chip.children[0].textContent = r.name;
+      chip.children[1].textContent = r.ticket || '—';
+      chip.title = r.ticket ? (r.name + ' · ' + r.ticket) : (r.name + ' · no ticket');
+      chip.addEventListener('click', () => {
+        vscode.postMessage({ type: 'setCurrentRepo', root: r.root });
+      });
+      row.appendChild(chip);
+    }
+  }
+
   window.addEventListener('message', (e) => {
     const m = e.data;
     if (!m) return;
@@ -311,6 +347,7 @@ export function getPanelHtml(webview: vscode.Webview): string {
       $('statMins').textContent = (m.activeMinutes || 0) + ' min active';
       $('statEdits').textContent = (m.edits || 0) + ' edits';
       $('statFiles').textContent = (m.files || 0) + ' files';
+      renderRepos(m.repos, m.currentRepo);
     } else if (m.type === 'connectionStatus') {
       if (m.state === 'connecting') setConn('connecting','Connecting…');
       else if (m.state === 'ok') setConn('ok','Connected as ' + (m.name || 'user'));

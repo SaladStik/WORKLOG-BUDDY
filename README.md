@@ -18,6 +18,9 @@ your editor, no context-switching to Jira, no end-of-day "wait, what did I even 
 - 🤖 **AI-drafted updates** — written from your real diff, streamed in live, fully editable.
 - ✅ **You stay in control** — review every update before it posts a worklog entry + comment.
 - 🎯 **Per-commit summaries** — write an update about any commit, and log the time you spent.
+- 🗂️ **Multi-repo workspaces** — in a multi-root / `.code-workspace` window with several git
+  repos, each repo gets its own active ticket, clock and commit detection; tracking follows
+  whichever repo you're editing.
 
 ---
 
@@ -102,6 +105,14 @@ Nothing is posted automatically. You get a dialog with **Approve & post** / **Co
 as a **comment** on the ticket. Want to tweak it first? Choose *Edit first*, edit the doc,
 then run **`Worklog: Post current draft`**.
 
+**6. It handles workspaces with more than one repo.**
+Open a multi-root workspace (or a `.code-workspace`) and Worklog Buddy discovers every git
+repo in it — even when the repo isn't the folder you opened (a parent folder, or a repo in a
+subfolder). Each repo keeps its **own** active ticket, active-minutes clock and commit
+pointer, so time and commits are always attributed to the right ticket. The "current" repo
+follows your active editor; the status bar shows `<repo> · <ticket> · <min>` when more than
+one repo is present, and the panel shows a row of repo chips you can click to switch.
+
 ---
 
 ## Settings
@@ -153,8 +164,10 @@ src/
   core/
     config.ts               Settings + secrets accessors (SecretStorage)
     lock.ts                 runExclusive mutex — prevents stacked prompts
-    session.ts              SessionManager — active ticket, tracker, status bar
-    reminders.ts            ReminderService — commit/activity nudge triggers
+    repos.ts                RepoRegistry — discovers every git repo in the workspace;
+                            owns per-repo ticket + activity clock + commit pointer
+    session.ts              SessionManager — facade over the current repo, status bar
+    reminders.ts            ReminderService — per-repo commit/activity nudge triggers
   features/
     tickets.ts              TicketService — pick / switch the active ticket
     draft.ts                DraftService — generate → review → post a Jira update
@@ -170,8 +183,8 @@ src/
     panelHtml.ts            Panel HTML / CSS / JS
 ```
 
-Dependencies form a strict DAG: `services` + `core/config` → `core/session` →
-`features` → `core/reminders` → `extension`.
+Dependencies form a strict DAG: `services` + `core/config` → `core/repos` →
+`core/session` → `features` → `core/reminders` → `extension`.
 
 ## Build from source
 

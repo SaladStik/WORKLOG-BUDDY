@@ -10,6 +10,7 @@ import {
 import { searchAssignedIssues, testConnection } from '../services/jira';
 import { testNim } from '../services/nimClient';
 import { SessionManager } from '../core/session';
+import { RepoRegistry } from '../core/repos';
 import { getPanelHtml } from './panelHtml';
 
 /** The sidebar management panel (webview). */
@@ -19,6 +20,7 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly session: SessionManager,
+    private readonly registry: RepoRegistry,
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -38,12 +40,21 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     const snap = this.session.snapshot();
+    const current = this.registry.current();
+    const repos = this.registry.all();
     this.post({
       type: 'session',
       activeTicket: this.session.getActiveTicket() ?? null,
       activeMinutes: Math.round(snap.activeSeconds / 60),
       edits: snap.editCount,
       files: snap.filesTouched.length,
+      // Multi-repo context: which repo is current and the full list (with their tickets).
+      currentRepo: current?.root ?? null,
+      repos: repos.map((r) => ({
+        root: r.root,
+        name: r.name,
+        ticket: this.registry.activeTicket(r.root) ?? null,
+      })),
     });
   }
 
@@ -77,6 +88,11 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'switchTicket':
         await vscode.commands.executeCommand('worklog.startTicket');
+        this.pushSession();
+        break;
+      case 'setCurrentRepo':
+        this.registry.setCurrent(msg.root as string);
+        this.session.refreshStatus();
         this.pushSession();
         break;
       case 'writeUpdateNow':

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { ActivityTracker } from './services/activityTracker';
 import { cfg, NIM_KEY_SECRET, setSecret } from './core/config';
 import { runExclusive } from './core/lock';
+import { RepoRegistry } from './core/repos';
 import { SessionManager } from './core/session';
 import { TicketService } from './features/tickets';
 import { DraftService, refreshDraftContext } from './features/draft';
@@ -12,20 +12,22 @@ import { SettingsViewProvider } from './webview/settingsView';
 let reminders: ReminderService | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
-  const tracker = new ActivityTracker(cfg().get<number>('idleTimeoutMinutes', 3));
-  tracker.start();
+  const registry = new RepoRegistry(context, cfg().get<number>('idleTimeoutMinutes', 3));
+  registry.start();
+  // Discover repos now and whenever the workspace's folders change.
+  void registry.refresh();
 
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusItem.show();
 
-  const session = new SessionManager(context, tracker, statusItem);
+  const session = new SessionManager(registry, statusItem);
   session.refreshStatus();
 
   const tickets = new TicketService(context, session);
   const draft = new DraftService(context, session);
-  const provider = new SettingsViewProvider(context, session);
+  const provider = new SettingsViewProvider(context, session, registry);
 
-  reminders = new ReminderService(session, tickets, draft, () => provider.pushSession());
+  reminders = new ReminderService(registry, session, tickets, draft, () => provider.pushSession());
   reminders.start();
 
   // Keep the panel's session stats in sync when the active ticket changes.
@@ -34,7 +36,8 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     statusItem,
     session,
-    { dispose: () => tracker.dispose() },
+    registry,
+    vscode.workspace.onDidChangeWorkspaceFolders(() => void registry.refresh()),
     { dispose: () => reminders?.dispose() },
 
     vscode.window.registerWebviewViewProvider('worklog.settingsView', provider),
@@ -85,8 +88,13 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.window.showInformationMessage('Worklog activity session reset.');
     }),
 
-    // Show the title-bar checkmark only when the active editor is a worklog draft.
-    vscode.window.onDidChangeActiveTextEditor(() => refreshDraftContext()),
+    // Show the title-bar checkmark only when the active editor is a worklog draft, and
+    // reflect the current repo (which follows the active editor) in the status bar/panel.
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      refreshDraftContext();
+      session.refreshStatus();
+      provider.pushSession();
+    }),
   );
 
   refreshDraftContext();

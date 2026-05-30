@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { getRepoFolder, getJiraConfig } from '../core/config';
+import { getJiraConfig } from '../core/config';
 import { getBranch, parseJiraKey } from '../services/gitInfo';
 import { searchAssignedIssues, JiraConfig, JiraIssue } from '../services/jira';
 import { SessionManager } from '../core/session';
@@ -13,7 +13,7 @@ export class TicketService {
 
   /** Pick (or enter) a ticket and make it the active session. Returns the chosen key. */
   async startTicket(): Promise<string | undefined> {
-    const folder = await getRepoFolder();
+    const folder = this.session.currentRepoFolder();
     const branch = folder ? await getBranch(folder) : undefined;
     const guess = parseJiraKey(branch);
 

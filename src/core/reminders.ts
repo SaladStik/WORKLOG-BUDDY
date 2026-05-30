@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
-import { cfg, getRepoFolder } from './config';
+import { cfg } from './config';
 import { getHeadSha } from '../services/gitInfo';
 import { isBusy, runExclusive } from './lock';
 import { SessionManager } from './session';
+import { RepoRegistry, RepoState } from './repos';
 import { TicketService } from '../features/tickets';
 import { DraftService, DraftMode } from '../features/draft';
 
@@ -28,13 +29,17 @@ async function askWithTimeout(message: string, timeoutMs: number, ...items: stri
   }
 }
 
-/** Timer-driven nudges: detects commits and accumulated active time, then prompts. */
+/**
+ * Timer-driven nudges. Each repo in the workspace is checked independently: a fresh
+ * commit or accumulated active time in *any* repo can trigger a nudge, and the nudge is
+ * scoped to that repo (its ticket, its diff). At most one nudge fires per tick.
+ */
 export class ReminderService {
   private timer?: ReturnType<typeof setInterval>;
-  private lastHeadSha?: string;
   private snoozeUntil = 0;
 
   constructor(
+    private readonly registry: RepoRegistry,
     private readonly session: SessionManager,
     private readonly tickets: TicketService,
     private readonly draft: DraftService,
@@ -47,12 +52,6 @@ export class ReminderService {
   }
 
   start(): void {
-    // Prime the commit detector so the first tick can't fire a false "you committed".
-    void getRepoFolder().then((folder) => {
-      if (folder) {
-        void getHeadSha(folder).then((sha) => (this.lastHeadSha = sha));
-      }
-    });
     this.timer = setInterval(() => void this.tick(), TICK_INTERVAL_MS);
   }
 
@@ -66,6 +65,11 @@ export class ReminderService {
     this.snoozeUntil = Date.now() + cfg().get<number>('snoozeMinutes', 10) * 60_000;
   }
 
+  /** Prefix a nudge with the repo name only when more than one repo is tracked. */
+  private label(repo: RepoState): string {
+    return this.registry.all().length > 1 ? `[${repo.name}] ` : '';
+  }
+
   private async tick(): Promise<void> {
     this.session.refreshStatus();
     this.onTick();
@@ -76,37 +80,15 @@ export class ReminderService {
     }
 
     // Never stack a nudge on top of a flow the user is already in. We bail *before*
-    // touching lastHeadSha so a commit made mid-review isn't swallowed — it'll be
-    // detected on the next free tick instead of silently advancing the pointer.
+    // touching any repo's lastHeadSha so a commit made mid-review isn't swallowed — it'll
+    // be detected on the next free tick instead of silently advancing the pointer.
     if (isBusy()) {
       return;
     }
 
-    // Detect a new commit since we last looked.
-    let committed = false;
-    const folder = await getRepoFolder();
-    if (folder) {
-      const head = await getHeadSha(folder);
-      if (head) {
-        if (this.lastHeadSha && head !== this.lastHeadSha) {
-          committed = true;
-        }
-        this.lastHeadSha = head;
-      }
-    }
-
-    const ticket = this.session.getActiveTicket();
-    const snap = this.session.snapshot();
-    const mins = snap.activeSeconds / 60;
-
-    // A fresh commit is an explicit action — always prompt once for it, even during a
-    // snooze. (The snooze is meant to throttle the time-based nudge, not commits.)
-    if (committed && c.get<boolean>('remindOnCommit', true)) {
-      if (ticket) {
-        await runExclusive(() => this.nudge(ticket, 'You just committed', 'lastCommit'));
-      } else {
-        await runExclusive(() => this.promptNoTicket(mins, snap.editCount));
-      }
+    // Detect a new commit in any repo since we last looked. A fresh commit is an explicit
+    // action — always prompt once for it, even during a snooze.
+    if (c.get<boolean>('remindOnCommit', true) && (await this.checkCommits())) {
       return;
     }
 
@@ -115,21 +97,65 @@ export class ReminderService {
       return;
     }
 
-    if (!ticket) {
-      if (snap.editCount > 0 && mins >= c.get<number>('workThresholdMinutes', 25)) {
-        await runExclusive(() => this.promptNoTicket(mins, snap.editCount));
-      }
-      return;
-    }
+    await this.checkActiveTime(c);
+  }
 
-    if (mins >= c.get<number>('updateReminderMinutes', 20)) {
-      await runExclusive(() => this.nudge(ticket, `You've done ~${Math.round(mins)} min of work`));
+  /** Scan repos for a fresh commit; nudge for the first one found. Returns true if it nudged. */
+  private async checkCommits(): Promise<boolean> {
+    for (const repo of this.registry.all()) {
+      const head = await getHeadSha(repo.root);
+      if (!head) {
+        continue;
+      }
+      const committed = repo.lastHeadSha !== undefined && head !== repo.lastHeadSha;
+      repo.lastHeadSha = head;
+      if (!committed) {
+        continue;
+      }
+      this.registry.setCurrent(repo.root);
+      const ticket = this.registry.activeTicket(repo.root);
+      const snap = repo.tracker.snapshot();
+      if (ticket) {
+        await runExclusive(() =>
+          this.nudge(ticket, `${this.label(repo)}You just committed`, 'lastCommit'),
+        );
+      } else {
+        await runExclusive(() => this.promptNoTicket(snap.activeSeconds / 60, snap.editCount, repo));
+      }
+      return true;
+    }
+    return false;
+  }
+
+  /** Scan repos for crossed activity thresholds; nudge for the first one. */
+  private async checkActiveTime(c: vscode.WorkspaceConfiguration): Promise<void> {
+    for (const repo of this.registry.all()) {
+      const ticket = this.registry.activeTicket(repo.root);
+      const snap = repo.tracker.snapshot();
+      const mins = snap.activeSeconds / 60;
+
+      if (!ticket) {
+        if (snap.editCount > 0 && mins >= c.get<number>('workThresholdMinutes', 25)) {
+          this.registry.setCurrent(repo.root);
+          await runExclusive(() => this.promptNoTicket(mins, snap.editCount, repo));
+          return;
+        }
+        continue;
+      }
+
+      if (mins >= c.get<number>('updateReminderMinutes', 20)) {
+        this.registry.setCurrent(repo.root);
+        await runExclusive(() =>
+          this.nudge(ticket, `${this.label(repo)}You've done ~${Math.round(mins)} min of work`),
+        );
+        return;
+      }
     }
   }
 
-  private async promptNoTicket(mins: number, edits: number): Promise<void> {
+  private async promptNoTicket(mins: number, edits: number, repo: RepoState): Promise<void> {
     const choice = await askWithTimeout(
-      `Yo — you've been coding for a while (${Math.round(mins)} min · ${edits} edits). What Jira ticket is this?`,
+      `Yo — you've been coding in ${repo.name} for a while (${Math.round(mins)} min · ${edits} edits). What Jira ticket is this?`,
       PROMPT_TIMEOUT_MS,
       'Pick ticket',
       'Snooze',

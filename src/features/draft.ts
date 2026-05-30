@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import {
-  getRepoFolder,
   getJiraConfig,
   getNimApiKey,
   getNimEndpoint,
@@ -68,7 +67,7 @@ export class DraftService {
    * `commitRef` flows through `generateAndReview` so any commit (not just HEAD) works.
    */
   async writeAboutCommit(ticket: string): Promise<void> {
-    const folder = await getRepoFolder();
+    const folder = this.session.currentRepoFolder();
     if (!folder) {
       vscode.window.showWarningMessage(
         'No git repository found. Open the folder that contains your repo (the one with the .git directory) and try again.',
@@ -125,7 +124,7 @@ export class DraftService {
       }
       return;
     }
-    const folder = await getRepoFolder();
+    const folder = this.session.currentRepoFolder();
     if (!folder) {
       vscode.window.showWarningMessage(
         'No git repository found. Open the folder that contains your repo (the one with the .git directory) and try again.',
