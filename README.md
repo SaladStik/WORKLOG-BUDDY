@@ -1,6 +1,6 @@
 # Worklog Buddy
 
-[![1st Place Hackathon Winner](https://img.shields.io/badge/%F0%9F%8F%86%20Hackathon-1st%20Place%20Winner-gold?style=for-the-badge)](#)
+[![1st Place Hackathon Winner](https://img.shields.io/badge/%F0%9F%8F%86%20Cursor%20May%20Meetup%20Hackathon-1st%20Place%20Winner-gold?style=for-the-badge)](#)
 
 > 🏆 **1st Place Hackathon Winner** 🏆
 
@@ -17,6 +17,7 @@ It's built to help without getting in the way. Nudges are occasional, easy to sn
 your editor, no context-switching to Jira, no end-of-day "wait, what did I even do today?"
 
 ### What you get
+
 - ⏱️ **Real activity tracking** - counts time you're actually editing, ignores idle windows.
 - 🔔 **Smart nudges** - after a chunk of work or right after a commit, never naggy.
 - 🤖 **AI-drafted updates** - written from your real diff, streamed in live, fully editable.
@@ -33,6 +34,7 @@ your editor, no context-switching to Jira, no end-of-day "wait, what did I even 
 ### 1. Install the extension (~1 min)
 
 **Recommended - install the released `.vsix` file:**
+
 1. Go to the [**Releases** page](https://github.com/SaladStik/WORKLOG-BUDDY/releases)
    and download the latest `worklog-buddy.vsix` from the newest release's **Assets**.
 2. In VS Code: `Cmd+Shift+P` → **Extensions: Install from VSIX…** → pick the file you
@@ -48,9 +50,11 @@ Development Host.
 After installing, reload: `Cmd+Shift+P` → **Developer: Reload Window**.
 
 ### 2. Open the panel (~10 sec)
+
 Click the **clock icon** in the left Activity Bar. The **Worklog Buddy → Manage** panel opens.
 
 ### 3. Connect Jira (~2 min)
+
 1. Create a Jira API token at
    **https://id.atlassian.com/manage-profile/security/api-tokens** → Create → copy it.
 2. In the panel's **Jira connection** section, fill in:
@@ -61,6 +65,7 @@ Click the **clock icon** in the left Activity Bar. The **Worklog Buddy → Manag
    assigned tickets below.
 
 ### 4. Add your NIM key (~1 min)
+
 In the **NVIDIA NIM** section, paste your API key (`nvapi-…`). Leave the base URL and
 model as-is (`meta/llama-3.1-8b-instruct` is fast and fine for summaries). Click **Test
 NIM** to confirm the key works (it shows `✓ <model>`), then click **Save**.
@@ -69,6 +74,7 @@ NIM** to confirm the key works (it shows `✓ <model>`), then click **Save**.
 > click **Get API Key**.
 
 ### 5. Start working (~30 sec)
+
 Click one of your tickets in the **Assigned tickets** list to make it active. Now just
 code. When you've done a chunk of work - or right after a `git commit` - you'll get a
 nudge offering to write the update. Approve it, and it posts to Jira.
@@ -81,12 +87,12 @@ nudge offering to write the update. Approve it, and it posts to Jira.
 
 ## How it works
 
-**1. It detects *real* work, not an idle window.**
+**1. It detects _real_ work, not an idle window.**
 Every edit, save, cursor move and window-focus change is a "heartbeat". Time only counts
 toward "active" when the gap between heartbeats is short (under the idle timeout) and the
 window is focused - so leaving VS Code open on a coffee break adds nothing. The clock
-resets every time you post an update, so "active minutes" always means *work since your
-last Jira update*.
+resets every time you post an update, so "active minutes" always means _work since your
+last Jira update_.
 
 **2. It asks which ticket you're on.**
 Once you cross the activity threshold (or commit), it prompts. It pre-guesses the ticket
@@ -94,7 +100,7 @@ key from your git branch (`feature/SCRUM-17-foo`) and can list your assigned, no
 tickets straight from Jira so you just click one.
 
 **3. It nudges you at the right moments.**
-A timer checks two triggers: **a fresh git commit** ("You just committed on SCRUM-17 - 
+A timer checks two triggers: **a fresh git commit** ("You just committed on SCRUM-17 -
 write an update?") and **accumulated active time** ("You've done ~20 min of work…").
 Nudges respect a snooze window so they don't nag.
 
@@ -105,8 +111,8 @@ appear in real time.
 
 **5. You review, then approve.**
 Nothing is posted automatically. You get a dialog with **Approve & post** / **Copy** /
-**Edit first**. Approving logs a **worklog entry** (time tracking) *and* posts the draft
-as a **comment** on the ticket. Want to tweak it first? Choose *Edit first*, edit the doc,
+**Edit first**. Approving logs a **worklog entry** (time tracking) _and_ posts the draft
+as a **comment** on the ticket. Want to tweak it first? Choose _Edit first_, edit the doc,
 then run **`Worklog: Post current draft`**.
 
 **6. It handles workspaces with more than one repo.**
@@ -121,17 +127,17 @@ one repo is present, and the panel shows a row of repo chips you can click to sw
 
 ## Settings
 
-| Setting | Default | Meaning |
-|---|---|---|
-| `worklog.workThresholdMinutes` | 25 | Active min before the "what ticket?" prompt |
-| `worklog.updateReminderMinutes` | 20 | Active min since last update before nudging |
-| `worklog.remindOnCommit` | true | Nudge right after a commit |
-| `worklog.snoozeMinutes` | 10 | Quiet period after snooze/dismiss |
-| `worklog.idleTimeoutMinutes` | 3 | Gap that stops counting as active |
-| `worklog.autoNudge` | true | Master switch for automatic nudges |
-| `worklog.nim.baseUrl` | `https://integrate.api.nvidia.com/v1` | NIM endpoint |
-| `worklog.nim.model` | `meta/llama-3.1-8b-instruct` | Draft model |
-| `worklog.jira.baseUrl` / `worklog.jira.email` | "" | Jira connection (token in SecretStorage) |
+| Setting                                       | Default                               | Meaning                                     |
+| --------------------------------------------- | ------------------------------------- | ------------------------------------------- |
+| `worklog.workThresholdMinutes`                | 25                                    | Active min before the "what ticket?" prompt |
+| `worklog.updateReminderMinutes`               | 20                                    | Active min since last update before nudging |
+| `worklog.remindOnCommit`                      | true                                  | Nudge right after a commit                  |
+| `worklog.snoozeMinutes`                       | 10                                    | Quiet period after snooze/dismiss           |
+| `worklog.idleTimeoutMinutes`                  | 3                                     | Gap that stops counting as active           |
+| `worklog.autoNudge`                           | true                                  | Master switch for automatic nudges          |
+| `worklog.nim.baseUrl`                         | `https://integrate.api.nvidia.com/v1` | NIM endpoint                                |
+| `worklog.nim.model`                           | `meta/llama-3.1-8b-instruct`          | Draft model                                 |
+| `worklog.jira.baseUrl` / `worklog.jira.email` | ""                                    | Jira connection (token in SecretStorage)    |
 
 All of these are editable from the sidebar panel - you rarely need to touch raw settings.
 
@@ -157,7 +163,7 @@ palette at all.
 
 ## Where credentials live
 
-Your **NIM key** and **Jira token** are stored in VS Code's encrypted `SecretStorage` - 
+Your **NIM key** and **Jira token** are stored in VS Code's encrypted `SecretStorage` -
 never in settings files or source. Jira URL and email are stored in your VS Code settings.
 
 ## Project layout
