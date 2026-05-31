@@ -6,6 +6,8 @@ import { findRepoRoot, getHeadSha } from '../services/gitInfo';
 /** Legacy single-repo key — migrated to a per-repo key on first run. */
 const LEGACY_ACTIVE_TICKET_KEY = 'worklog.activeTicket';
 const ACTIVE_TICKET_PREFIX = 'worklog.activeTicket::';
+/** Roots the user has un-checked in the picker (default is "tracked"). */
+const EXCLUDED_REPOS_KEY = 'worklog.excludedRepos';
 
 /** One tracked git repository in the current workspace. */
 export interface RepoState {
@@ -55,11 +57,16 @@ function sameOrInside(file: string, root: string): boolean {
  */
 export class RepoRegistry implements vscode.Disposable {
   private readonly repos = new Map<string, RepoState>();
+  /** Auto-follow memory: the repo of the most recent active editor. */
   private lastActiveRoot?: string;
+  /** User-pinned repo. When set, it is the current repo regardless of the active editor. */
+  private pinnedRoot?: string;
+  /** Repos the user has excluded from tracking (time nudges + batch updates). */
+  private readonly excluded: Set<string>;
   private migrated = false;
 
   private readonly _onUpdated = new vscode.EventEmitter<void>();
-  /** Fires when repos are (re)discovered or an active ticket changes. */
+  /** Fires when repos are (re)discovered, a ticket changes, or selection/focus changes. */
   readonly onUpdated = this._onUpdated.event;
 
   private readonly disposables: vscode.Disposable[] = [];
@@ -67,7 +74,9 @@ export class RepoRegistry implements vscode.Disposable {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly idleTimeoutMinutes: number,
-  ) {}
+  ) {
+    this.excluded = new Set(context.workspaceState.get<string[]>(EXCLUDED_REPOS_KEY, []));
+  }
 
   /** Wire the activity-event subscriptions (one set for the whole workspace). */
   start(): void {
@@ -185,10 +194,17 @@ export class RepoRegistry implements vscode.Disposable {
   }
 
   /**
-   * The repo the user is "on": the active editor's repo, else the last one they were in,
-   * else the sole repo when there's only one. Undefined when no repo is known.
+   * The repo the user is focused on: a user pin wins (and sticks across editor changes),
+   * else the active editor's repo, else the last one they were in, else the sole repo.
+   * Undefined when no repo is known.
    */
   current(): RepoState | undefined {
+    if (this.pinnedRoot) {
+      const pinned = this.repos.get(this.pinnedRoot);
+      if (pinned) {
+        return pinned;
+      }
+    }
     const active = vscode.window.activeTextEditor?.document.uri;
     if (active?.scheme === 'file') {
       const repo = this.repoForFile(active.fsPath);
@@ -205,12 +221,53 @@ export class RepoRegistry implements vscode.Disposable {
     return this.repos.size === 1 ? this.repos.values().next().value : undefined;
   }
 
-  /** Force the current repo (used by the reminder before nudging, and the panel switcher). */
-  setCurrent(root: string): void {
+  get isPinned(): boolean {
+    return !!this.pinnedRoot && this.repos.has(this.pinnedRoot);
+  }
+
+  /**
+   * Toggle the user pin for a repo. Pinning makes it the current repo and keeps it there
+   * even as you switch files; clicking the already-pinned repo clears the pin (back to
+   * following the active editor).
+   */
+  togglePin(root: string): void {
+    const n = norm(root);
+    if (!this.repos.has(n)) {
+      return;
+    }
+    this.pinnedRoot = this.pinnedRoot === n ? undefined : n;
+    this._onUpdated.fire();
+  }
+
+  /** Pin focus to a repo (no toggle) — used after the user explicitly chooses one. */
+  pin(root: string): void {
     const n = norm(root);
     if (this.repos.has(n)) {
-      this.lastActiveRoot = n;
+      this.pinnedRoot = n;
+      this._onUpdated.fire();
     }
+  }
+
+  /** Is a repo tracked (included in time nudges + batch updates)? Default true. */
+  isIncluded(root: string): boolean {
+    return !this.excluded.has(norm(root));
+  }
+
+  /** Tracked repos — the ones time nudges and "write for all" act on. */
+  included(): RepoState[] {
+    return this.all().filter((r) => !this.excluded.has(r.root));
+  }
+
+  /** Check/uncheck a repo for tracking, and persist the choice. */
+  async setIncluded(root: string, included: boolean): Promise<void> {
+    const n = norm(root);
+    if (included) {
+      this.excluded.delete(n);
+    } else {
+      this.excluded.add(n);
+    }
+    await this.context.workspaceState.update(EXCLUDED_REPOS_KEY, [...this.excluded]);
+    this._onUpdated.fire();
   }
 
   /** The active ticket for a repo (defaults to the current repo). */

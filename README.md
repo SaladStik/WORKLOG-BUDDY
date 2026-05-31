@@ -141,6 +141,8 @@ Open with `Cmd+Shift+P`:
 - **Worklog: Write update about last commit** — summarize your most recent commit
 - **Worklog: Write update about a specific commit** — pick any recent commit, and
   optionally log how much time you spent on it
+- **Worklog: Write updates for all tracked repos** — in a multi-repo workspace, draft a
+  separate update for each tracked repo that has a ticket (one update per repo)
 - **Worklog: Post current draft** — post the draft document you've been editing
 - **Worklog: Manage Jira connection** — URL / email / token / test / switch
 - **Worklog: Set NVIDIA NIM API key**

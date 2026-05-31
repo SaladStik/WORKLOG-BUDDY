@@ -59,6 +59,10 @@
         "title": "Worklog: Write update about a specific commit"
       },
       {
+        "command": "worklog.updateSelectedRepos",
+        "title": "Worklog: Write updates for all tracked repos"
+      },
+      {
         "command": "worklog.postCurrentDraft",
         "title": "Worklog: Post current draft to Jira",
         "icon": "$(check)"

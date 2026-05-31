@@ -66,8 +66,8 @@ export class DraftService {
    * Let the user pick one of the recent commits, then draft an update about it.
    * `commitRef` flows through `generateAndReview` so any commit (not just HEAD) works.
    */
-  async writeAboutCommit(ticket: string): Promise<void> {
-    const folder = this.session.currentRepoFolder();
+  async writeAboutCommit(ticket: string, repoFolder?: string): Promise<void> {
+    const folder = repoFolder ?? this.session.currentRepoFolder();
     if (!folder) {
       vscode.window.showWarningMessage(
         'No git repository found. Open the folder that contains your repo (the one with the .git directory) and try again.',
@@ -85,7 +85,7 @@ export class DraftService {
       sha: c.sha,
     }));
     const sel = await vscode.window.showQuickPick(items, {
-      title: `Write update for ${ticket} — which commit?`,
+      title: `Write update for ${ticket}: which commit?`,
       placeHolder: 'Pick a commit to summarize',
       matchOnDescription: true,
     });
@@ -107,7 +107,7 @@ export class DraftService {
       return; // cancelled
     }
     const loggedSeconds = parseDuration(timeStr);
-    await this.generateAndReview(ticket, 'lastCommit', sel.sha, loggedSeconds);
+    await this.generateAndReview(ticket, 'lastCommit', sel.sha, loggedSeconds, folder);
   }
 
   async generateAndReview(
@@ -115,6 +115,7 @@ export class DraftService {
     mode: DraftMode = 'session',
     commitRef = 'HEAD',
     loggedSecondsOverride?: number,
+    repoFolder?: string,
   ): Promise<void> {
     const apiKey = await getNimApiKey(this.context);
     if (!apiKey) {
@@ -124,7 +125,8 @@ export class DraftService {
       }
       return;
     }
-    const folder = this.session.currentRepoFolder();
+    // Act on the given repo (e.g. the one that was committed to) or the current one.
+    const folder = repoFolder ?? this.session.currentRepoFolder();
     if (!folder) {
       vscode.window.showWarningMessage(
         'No git repository found. Open the folder that contains your repo (the one with the .git directory) and try again.',
@@ -132,7 +134,7 @@ export class DraftService {
       return;
     }
 
-    const snap = this.session.snapshot();
+    const snap = this.session.snapshot(folder);
     const sinceMinutes = Math.max(Math.round(snap.activeSeconds / 60) + 5, 15);
 
     // Open the draft doc first and stream tokens into it so the user sees progress.
@@ -199,9 +201,9 @@ export class DraftService {
     if (choice === 'Copy') {
       await vscode.env.clipboard.writeText(finalText);
       vscode.window.showInformationMessage('Update copied to clipboard.');
-      this.session.markUpdated();
+      this.session.markUpdated(folder);
     } else if (choice === 'Approve & post' && jira) {
-      await this.post(jira, ticket, finalText, loggedSecondsOverride ?? snap.activeSeconds);
+      await this.post(jira, ticket, finalText, loggedSecondsOverride ?? snap.activeSeconds, folder);
     }
     // "Edit first" or Cancel: doc stays open; user runs `worklog.postCurrentDraft` when ready.
   }
@@ -231,13 +233,19 @@ export class DraftService {
   }
 
   /** Log a worklog entry AND post the summary as a comment, then reset the session. */
-  private async post(jira: JiraConfig, ticket: string, text: string, activeSeconds: number): Promise<void> {
+  private async post(
+    jira: JiraConfig,
+    ticket: string,
+    text: string,
+    activeSeconds: number,
+    repoFolder?: string,
+  ): Promise<void> {
     try {
       await addWorklog(jira, ticket, activeSeconds, text);
       await postComment(jira, ticket, text);
       const mins = Math.max(1, Math.round(activeSeconds / 60));
       vscode.window.showInformationMessage(`Logged ${mins}m + posted update to ${ticket}.`);
-      this.session.markUpdated();
+      this.session.markUpdated(repoFolder);
     } catch (err) {
       vscode.window.showErrorMessage(`Posting to Jira failed: ${(err as Error).message}`);
     }

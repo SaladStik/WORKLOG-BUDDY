@@ -97,16 +97,32 @@ export function getPanelHtml(webview: vscode.Webview): string {
   .ticket-hero { font-size: 16px; font-weight: 600; margin: 2px 0 10px; }
   .ticket-hero.none { opacity: 0.55; font-weight: 400; font-style: italic; }
 
-  /* Repo switcher — only shown in multi-root workspaces with more than one repo. */
-  .repoRow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-  .repoChip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px;
-    font-size: 11px; border-radius: 10px; cursor: pointer; border: 1px solid var(--vscode-input-border);
-    background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
-    transition: background 0.12s, border-color 0.12s; }
-  .repoChip:hover { background: var(--vscode-list-hoverBackground); }
-  .repoChip.active { border-color: var(--vscode-focusBorder);
-    background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-  .repoChip .rt { opacity: 0.7; }
+  /* Repo picker — only shown in multi-root workspaces with more than one repo. */
+  .repoSection { margin-bottom: 12px; }
+  .repoHead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+  .repoHead .lbl { font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.04em; opacity: 0.7; }
+  .repoHead .hint { font-size: 11px; opacity: 0.55; }
+  .repoList { border: 1px solid var(--vscode-panel-border); border-radius: 4px;
+    background: var(--vscode-input-background); overflow: hidden; }
+  .repoItem { display: flex; align-items: center; gap: 8px; padding: 7px 9px; cursor: pointer;
+    border-left: 2px solid transparent; transition: background 0.12s; }
+  .repoItem + .repoItem { border-top: 1px solid var(--vscode-panel-border); }
+  .repoItem:hover { background: var(--vscode-list-hoverBackground); }
+  .repoItem.focused { background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground); border-left-color: var(--vscode-focusBorder); }
+  .repoItem .check { flex: 0 0 auto; width: 15px; height: 15px; border-radius: 3px;
+    border: 1px solid var(--vscode-input-border); background: var(--vscode-input-background);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1; }
+  .repoItem .check.on { background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground); border-color: transparent; }
+  .repoItem .nm { font-weight: 600; flex: 0 0 auto; max-width: 45%; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .repoItem .tk { flex: 1; text-align: right; opacity: 0.85; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .repoItem .tk.none { opacity: 0.5; font-style: italic; }
+  .repoItem .pin { flex: 0 0 auto; opacity: 0.5; font-size: 11px; }
+  .repoItem.focused .pin { opacity: 1; }
   .stats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
   .badge { background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
     padding: 3px 9px; font-size: 11px; border-radius: 10px; }
@@ -161,7 +177,13 @@ export function getPanelHtml(webview: vscode.Webview): string {
 <div class="panel active" id="panel-activity">
   <div class="card">
     <h3>Current session</h3>
-    <div class="repoRow" id="repoRow" style="display:none"></div>
+    <div class="repoSection" id="repoSection" style="display:none">
+      <div class="repoHead">
+        <span class="lbl">Repositories</span>
+        <span class="hint">check to track &middot; click to focus</span>
+      </div>
+      <div class="repoList" id="repoList"></div>
+    </div>
     <div class="ticket-hero none" id="activeTicket">No ticket selected</div>
     <div class="stats">
       <span class="badge" id="statMins">0 min active</span>
@@ -170,6 +192,7 @@ export function getPanelHtml(webview: vscode.Webview): string {
     </div>
     <div class="btns">
       <button class="primary block" id="writeUpdateNow">Write update</button>
+      <button class="block" id="writeAllRepos" style="display:none">Write updates for tracked repos</button>
       <button class="block" id="writeLastCommit">Write about last commit</button>
       <button class="block" id="writeAboutCommit">Write about a specific commit…</button>
       <div class="row">
@@ -212,7 +235,7 @@ export function getPanelHtml(webview: vscode.Webview): string {
       <input type="password" id="nimApiKey" class="grow" placeholder="nvapi-..." />
       <button class="reveal" data-toggle="nimApiKey">Show</button>
     </div>
-    <div class="helper">Get an API key at <a href="https://build.nvidia.com">build.nvidia.com</a> — open any model and click <em>Get API Key</em>.</div>
+    <div class="helper">Get an API key at <a href="https://build.nvidia.com">build.nvidia.com</a>. Open any model and click <em>Get API Key</em>.</div>
     <label>Base URL</label>
     <input type="text" id="nimBaseUrl" />
     <label>Model</label>
@@ -291,7 +314,7 @@ export function getPanelHtml(webview: vscode.Webview): string {
   function renderTickets(items) {
     const list = $('ticketList');
     if (!items || !items.length) {
-      list.innerHTML = '<div class="empty">No tickets — connect to Jira and refresh.</div>';
+      list.innerHTML = '<div class="empty">No tickets. Connect to Jira and refresh.</div>';
       return;
     }
     list.innerHTML = '';
@@ -311,28 +334,48 @@ export function getPanelHtml(webview: vscode.Webview): string {
     }
   }
 
-  // Render the repo switcher only when more than one git repo is in the workspace.
-  function renderRepos(repos, currentRoot) {
-    const row = $('repoRow');
-    if (!repos || repos.length < 2) {
-      row.style.display = 'none';
-      row.innerHTML = '';
-      return;
-    }
-    row.style.display = 'flex';
-    row.innerHTML = '';
+  // The repo picker is only shown when the workspace has more than one git repo.
+  // Checkbox = track this repo (nudges + batch updates). Row click = focus it (sticky pin).
+  function renderRepos(repos, currentRoot, pinned) {
+    const section = $('repoSection');
+    const list = $('repoList');
+    const multi = repos && repos.length > 1;
+    section.style.display = multi ? 'block' : 'none';
+    $('writeAllRepos').style.display = multi ? 'block' : 'none';
+    if (!multi) { list.innerHTML = ''; return; }
+
+    list.innerHTML = '';
+    let trackedCount = 0;
     for (const r of repos) {
-      const chip = document.createElement('div');
-      chip.className = 'repoChip' + (r.root === currentRoot ? ' active' : '');
-      chip.innerHTML = '<span class="rn"></span><span class="rt"></span>';
-      chip.children[0].textContent = r.name;
-      chip.children[1].textContent = r.ticket || '—';
-      chip.title = r.ticket ? (r.name + ' · ' + r.ticket) : (r.name + ' · no ticket');
-      chip.addEventListener('click', () => {
-        vscode.postMessage({ type: 'setCurrentRepo', root: r.root });
+      if (r.included) trackedCount++;
+      const focused = r.root === currentRoot;
+      const item = document.createElement('div');
+      item.className = 'repoItem' + (focused ? ' focused' : '');
+      item.title = focused ? (pinned ? 'Pinned. Click to unpin and follow the editor.' : 'Click to pin focus here.') : 'Click to focus this repo.';
+      item.innerHTML = '<span class="check"></span><span class="nm"></span>'
+        + '<span class="tk"></span><span class="pin"></span>';
+      const check = item.children[0];
+      check.className = 'check' + (r.included ? ' on' : '');
+      check.textContent = r.included ? '✓' : '';
+      check.title = r.included ? 'Tracked. Click to stop tracking.' : 'Not tracked. Click to track.';
+      item.children[1].textContent = r.name;
+      const tk = item.children[2];
+      tk.textContent = r.ticket || 'no ticket';
+      tk.className = 'tk' + (r.ticket ? '' : ' none');
+      item.children[3].textContent = focused && pinned ? '📌' : '';
+
+      check.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        vscode.postMessage({ type: 'setRepoIncluded', root: r.root, included: !r.included });
       });
-      row.appendChild(chip);
+      item.addEventListener('click', () => {
+        vscode.postMessage({ type: 'focusRepo', root: r.root });
+      });
+      list.appendChild(item);
     }
+    $('writeAllRepos').textContent = 'Write updates for ' + trackedCount + ' tracked repo'
+      + (trackedCount === 1 ? '' : 's');
+    $('writeAllRepos').disabled = trackedCount === 0;
   }
 
   window.addEventListener('message', (e) => {
@@ -347,7 +390,7 @@ export function getPanelHtml(webview: vscode.Webview): string {
       $('statMins').textContent = (m.activeMinutes || 0) + ' min active';
       $('statEdits').textContent = (m.edits || 0) + ' edits';
       $('statFiles').textContent = (m.files || 0) + ' files';
-      renderRepos(m.repos, m.currentRepo);
+      renderRepos(m.repos, m.currentRepo, m.pinned);
     } else if (m.type === 'connectionStatus') {
       if (m.state === 'connecting') setConn('connecting','Connecting…');
       else if (m.state === 'ok') setConn('ok','Connected as ' + (m.name || 'user'));
@@ -395,6 +438,7 @@ export function getPanelHtml(webview: vscode.Webview): string {
   $('refreshTickets').addEventListener('click', () => vscode.postMessage({ type: 'refreshTickets' }));
   $('switchTicket').addEventListener('click', () => vscode.postMessage({ type: 'switchTicket' }));
   $('writeUpdateNow').addEventListener('click', () => vscode.postMessage({ type: 'writeUpdateNow' }));
+  $('writeAllRepos').addEventListener('click', () => vscode.postMessage({ type: 'writeSelectedRepos' }));
   $('writeLastCommit').addEventListener('click', () => vscode.postMessage({ type: 'writeAboutLastCommit' }));
   $('writeAboutCommit').addEventListener('click', () => vscode.postMessage({ type: 'writeAboutCommit' }));
   $('resetSession').addEventListener('click', () => vscode.postMessage({ type: 'resetSession' }));

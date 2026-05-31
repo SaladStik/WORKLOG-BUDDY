@@ -100,7 +100,11 @@ export class ReminderService {
     await this.checkActiveTime(c);
   }
 
-  /** Scan repos for a fresh commit; nudge for the first one found. Returns true if it nudged. */
+  /**
+   * Scan *every* repo for a fresh commit; nudge for the first one found. A commit is an
+   * explicit action, so it fires regardless of which repo is focused or whether the repo
+   * is in the tracked set — as long as it has a ticket. Returns true if it nudged.
+   */
   private async checkCommits(): Promise<boolean> {
     for (const repo of this.registry.all()) {
       const head = await getHeadSha(repo.root);
@@ -112,31 +116,32 @@ export class ReminderService {
       if (!committed) {
         continue;
       }
-      this.registry.setCurrent(repo.root);
       const ticket = this.registry.activeTicket(repo.root);
-      const snap = repo.tracker.snapshot();
       if (ticket) {
         await runExclusive(() =>
-          this.nudge(ticket, `${this.label(repo)}You just committed`, 'lastCommit'),
+          this.nudge(ticket, `${this.label(repo)}You just committed`, 'lastCommit', repo.root),
         );
-      } else {
-        await runExclusive(() => this.promptNoTicket(snap.activeSeconds / 60, snap.editCount, repo));
+        return true;
       }
-      return true;
+      // No ticket on that repo: only prompt if it's a tracked repo (don't nag about excluded ones).
+      if (this.registry.isIncluded(repo.root)) {
+        const snap = repo.tracker.snapshot();
+        await runExclusive(() => this.promptNoTicket(snap.activeSeconds / 60, snap.editCount, repo));
+        return true;
+      }
     }
     return false;
   }
 
-  /** Scan repos for crossed activity thresholds; nudge for the first one. */
+  /** Scan tracked repos for crossed activity thresholds; nudge for the first one. */
   private async checkActiveTime(c: vscode.WorkspaceConfiguration): Promise<void> {
-    for (const repo of this.registry.all()) {
+    for (const repo of this.registry.included()) {
       const ticket = this.registry.activeTicket(repo.root);
       const snap = repo.tracker.snapshot();
       const mins = snap.activeSeconds / 60;
 
       if (!ticket) {
         if (snap.editCount > 0 && mins >= c.get<number>('workThresholdMinutes', 25)) {
-          this.registry.setCurrent(repo.root);
           await runExclusive(() => this.promptNoTicket(mins, snap.editCount, repo));
           return;
         }
@@ -144,9 +149,13 @@ export class ReminderService {
       }
 
       if (mins >= c.get<number>('updateReminderMinutes', 20)) {
-        this.registry.setCurrent(repo.root);
         await runExclusive(() =>
-          this.nudge(ticket, `${this.label(repo)}You've done ~${Math.round(mins)} min of work`),
+          this.nudge(
+            ticket,
+            `${this.label(repo)}You've done ~${Math.round(mins)} min of work`,
+            'session',
+            repo.root,
+          ),
         );
         return;
       }
@@ -155,19 +164,24 @@ export class ReminderService {
 
   private async promptNoTicket(mins: number, edits: number, repo: RepoState): Promise<void> {
     const choice = await askWithTimeout(
-      `Yo — you've been coding in ${repo.name} for a while (${Math.round(mins)} min · ${edits} edits). What Jira ticket is this?`,
+      `Yo, you've been coding in ${repo.name} for a while (${Math.round(mins)} min · ${edits} edits). What Jira ticket is this?`,
       PROMPT_TIMEOUT_MS,
       'Pick ticket',
       'Snooze',
     );
     if (choice === 'Pick ticket') {
-      await this.tickets.startTicket();
+      await this.tickets.startTicket(repo.root);
     } else {
       this.snooze(); // Snooze, dismiss, or ignored-and-timed-out → quiet, then re-prompt later.
     }
   }
 
-  private async nudge(ticket: string, reason: string, mode: DraftMode = 'session'): Promise<void> {
+  private async nudge(
+    ticket: string,
+    reason: string,
+    mode: DraftMode = 'session',
+    repoFolder?: string,
+  ): Promise<void> {
     const choice = await askWithTimeout(
       `${reason} on ${ticket}. Write a Jira update?`,
       PROMPT_TIMEOUT_MS,
@@ -176,9 +190,9 @@ export class ReminderService {
       'Switch ticket',
     );
     if (choice === 'Write update') {
-      await this.draft.generateAndReview(ticket, mode);
+      await this.draft.generateAndReview(ticket, mode, 'HEAD', undefined, repoFolder);
     } else if (choice === 'Switch ticket') {
-      await this.tickets.startTicket();
+      await this.tickets.startTicket(repoFolder);
     } else {
       this.snooze(); // Snooze, dismiss, or ignored-and-timed-out → quiet, then re-prompt later.
     }

@@ -11,6 +11,7 @@ import { searchAssignedIssues, testConnection } from '../services/jira';
 import { testNim } from '../services/nimClient';
 import { SessionManager } from '../core/session';
 import { RepoRegistry } from '../core/repos';
+import { TicketService } from '../features/tickets';
 import { getPanelHtml } from './panelHtml';
 
 /** The sidebar management panel (webview). */
@@ -21,6 +22,7 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
     private readonly context: vscode.ExtensionContext,
     private readonly session: SessionManager,
     private readonly registry: RepoRegistry,
+    private readonly tickets: TicketService,
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -48,12 +50,14 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
       activeMinutes: Math.round(snap.activeSeconds / 60),
       edits: snap.editCount,
       files: snap.filesTouched.length,
-      // Multi-repo context: which repo is current and the full list (with their tickets).
+      // Multi-repo context: which repo is focused, whether it's pinned, and the full list.
       currentRepo: current?.root ?? null,
+      pinned: this.registry.isPinned,
       repos: repos.map((r) => ({
         root: r.root,
         name: r.name,
         ticket: this.registry.activeTicket(r.root) ?? null,
+        included: this.registry.isIncluded(r.root),
       })),
     });
   }
@@ -82,18 +86,37 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
       case 'refreshTickets':
         await this.refreshTickets();
         break;
-      case 'selectTicket':
-        await this.session.setActiveTicket(msg.key as string);
+      case 'selectTicket': {
+        // Ask which repo when there's more than one and none is pinned, so a ticket never
+        // silently lands on the wrong repo. (pickRepoFolder no-ops for a single/pinned repo.)
+        const picked = await this.tickets.pickRepoFolder('Add this ticket to which repo?');
+        if (!picked) {
+          break; // cancelled
+        }
+        const root = picked.root ?? this.registry.current()?.root;
+        if (root) {
+          this.registry.pin(root); // focus the repo we just assigned to
+        }
+        await this.session.setActiveTicket(msg.key as string, root);
         this.pushSession();
         break;
+      }
       case 'switchTicket':
         await vscode.commands.executeCommand('worklog.startTicket');
         this.pushSession();
         break;
-      case 'setCurrentRepo':
-        this.registry.setCurrent(msg.root as string);
+      case 'focusRepo':
+        // Toggle a sticky pin: focus stays on this repo even as the active editor changes.
+        this.registry.togglePin(msg.root as string);
         this.session.refreshStatus();
         this.pushSession();
+        break;
+      case 'setRepoIncluded':
+        await this.registry.setIncluded(msg.root as string, !!msg.included);
+        this.pushSession();
+        break;
+      case 'writeSelectedRepos':
+        await vscode.commands.executeCommand('worklog.updateSelectedRepos');
         break;
       case 'writeUpdateNow':
         await vscode.commands.executeCommand('worklog.updateNow');

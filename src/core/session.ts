@@ -32,12 +32,17 @@ export class SessionManager implements vscode.Disposable {
     });
   }
 
-  getActiveTicket(): string | undefined {
-    return this.registry.activeTicket();
+  /** Resolve a repo by root, or fall back to the current repo. */
+  private repoOf(root?: string) {
+    return root ? this.registry.get(root) : this.registry.current();
   }
 
-  async setActiveTicket(key: string | undefined): Promise<void> {
-    await this.registry.setActiveTicket(key);
+  getActiveTicket(root?: string): string | undefined {
+    return this.registry.activeTicket(root);
+  }
+
+  async setActiveTicket(key: string | undefined, root?: string): Promise<void> {
+    await this.registry.setActiveTicket(key, root);
     this.refreshStatus();
     this._onUpdated.fire();
   }
@@ -48,20 +53,20 @@ export class SessionManager implements vscode.Disposable {
   }
 
   /** Start a fresh window after posting so reminders/evidence cover only new work. */
-  markUpdated(): void {
-    this.registry.current()?.tracker.reset();
+  markUpdated(root?: string): void {
+    this.repoOf(root)?.tracker.reset();
     this.refreshStatus();
     this._onUpdated.fire();
   }
 
-  resetSession(): void {
-    this.registry.current()?.tracker.reset();
+  resetSession(root?: string): void {
+    this.repoOf(root)?.tracker.reset();
     this.refreshStatus();
     this._onUpdated.fire();
   }
 
-  snapshot(): ActivitySnapshot {
-    return this.registry.current()?.tracker.snapshot() ?? EMPTY_SNAPSHOT;
+  snapshot(root?: string): ActivitySnapshot {
+    return this.repoOf(root)?.tracker.snapshot() ?? EMPTY_SNAPSHOT;
   }
 
   refreshStatus(): void {

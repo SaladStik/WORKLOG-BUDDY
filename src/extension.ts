@@ -23,9 +23,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const session = new SessionManager(registry, statusItem);
   session.refreshStatus();
 
-  const tickets = new TicketService(context, session);
+  const tickets = new TicketService(context, session, registry);
   const draft = new DraftService(context, session);
-  const provider = new SettingsViewProvider(context, session, registry);
+  const provider = new SettingsViewProvider(context, session, registry, tickets);
 
   reminders = new ReminderService(registry, session, tickets, draft, () => provider.pushSession());
   reminders.start();
@@ -52,25 +52,65 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand('worklog.updateNow', () =>
       runExclusive(async () => {
-        const ticket = session.getActiveTicket() ?? (await tickets.startTicket());
+        const picked = await tickets.pickRepoFolder('Write a Jira update for which repo?');
+        if (!picked) {
+          return; // cancelled
+        }
+        const root = picked.root;
+        const ticket = registry.activeTicket(root) ?? (await tickets.startTicket(root));
         if (ticket) {
-          await draft.generateAndReview(ticket);
+          await draft.generateAndReview(ticket, 'session', 'HEAD', undefined, root);
         }
       }),
     ),
     vscode.commands.registerCommand('worklog.writeAboutLastCommit', () =>
       runExclusive(async () => {
-        const ticket = session.getActiveTicket() ?? (await tickets.startTicket());
+        const picked = await tickets.pickRepoFolder('Write about the last commit in which repo?');
+        if (!picked) {
+          return; // cancelled
+        }
+        const root = picked.root;
+        const ticket = registry.activeTicket(root) ?? (await tickets.startTicket(root));
         if (ticket) {
-          await draft.generateAndReview(ticket, 'lastCommit');
+          await draft.generateAndReview(ticket, 'lastCommit', 'HEAD', undefined, root);
         }
       }),
     ),
     vscode.commands.registerCommand('worklog.writeAboutCommit', () =>
       runExclusive(async () => {
-        const ticket = session.getActiveTicket() ?? (await tickets.startTicket());
+        const picked = await tickets.pickRepoFolder('Pick a commit from which repo?');
+        if (!picked) {
+          return; // cancelled
+        }
+        const root = picked.root;
+        const ticket = registry.activeTicket(root) ?? (await tickets.startTicket(root));
         if (ticket) {
-          await draft.writeAboutCommit(ticket);
+          await draft.writeAboutCommit(ticket, root);
+        }
+      }),
+    ),
+    // Multi-repo: draft one update per tracked repo that has a ticket (each posts to its own).
+    vscode.commands.registerCommand('worklog.updateSelectedRepos', () =>
+      runExclusive(async () => {
+        const tracked = registry.included();
+        const withTicket = tracked.filter((r) => registry.activeTicket(r.root));
+        if (!withTicket.length) {
+          vscode.window.showWarningMessage(
+            'None of the tracked repos have an active ticket yet. Pick a ticket for each repo first.',
+          );
+          return;
+        }
+        for (const repo of withTicket) {
+          const ticket = registry.activeTicket(repo.root);
+          if (ticket) {
+            await draft.generateAndReview(ticket, 'session', 'HEAD', undefined, repo.root);
+          }
+        }
+        const skipped = tracked.filter((r) => !registry.activeTicket(r.root));
+        if (skipped.length) {
+          vscode.window.showInformationMessage(
+            `Skipped ${skipped.length} repo(s) with no ticket: ${skipped.map((r) => r.name).join(', ')}.`,
+          );
         }
       }),
     ),
