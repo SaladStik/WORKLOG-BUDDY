@@ -14,7 +14,7 @@ export interface ActivitySnapshot {
  *
  * Model (same idea as WakaTime): every meaningful event is a "heartbeat". When a
  * heartbeat arrives, the gap since the previous heartbeat is added to active time
- * only if that gap is below the idle timeout — so leaving the window open without
+ * only if that gap is below the idle timeout - so leaving the window open without
  * touching anything contributes nothing.
  *
  * Counters are cumulative until reset(); the extension resets them whenever a ticket

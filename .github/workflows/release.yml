@@ -3,7 +3,7 @@ name: Release
 # Builds the extension and publishes a GitHub Release with the packaged .vsix.
 # Two ways to trigger it:
 #   1. Push a version tag (e.g. `git push --follow-tags` after `npm version patch`).
-#   2. Run it manually from the Actions tab and type a tag (e.g. v0.0.2) — the tag
+#   2. Run it manually from the Actions tab and type a tag (e.g. v0.0.2) - the tag
 #      and Release are created for you at the current commit.
 on:
   push:

@@ -19,13 +19,13 @@ import { SessionManager } from '../core/session';
 
 export type DraftMode = 'session' | 'lastCommit';
 
-const DRAFT_HEADING = /^#\s*Worklog update\s*—\s*([A-Z][A-Z0-9]+-\d+)/m;
+const DRAFT_HEADING = /^#\s*Worklog update\s*-\s*([A-Z][A-Z0-9]+-\d+)/m;
 
 /** Sets the `worklog.activeDraft` context key based on the active editor's content. */
 export function refreshDraftContext(): void {
   const editor = vscode.window.activeTextEditor;
   const isDraft =
-    !!editor && /^#\s*Worklog update\s*—/m.test(editor.document.getText().slice(0, 200));
+    !!editor && /^#\s*Worklog update\s*-/m.test(editor.document.getText().slice(0, 200));
   void vscode.commands.executeCommand('setContext', 'worklog.activeDraft', isDraft);
 }
 
@@ -140,7 +140,7 @@ export class DraftService {
     // Open the draft doc first and stream tokens into it so the user sees progress.
     const doc = await vscode.workspace.openTextDocument({
       language: 'markdown',
-      content: `# Worklog update — ${ticket}\n\n`,
+      content: `# Worklog update - ${ticket}\n\n`,
     });
     await vscode.window.showTextDocument(doc, { preview: false });
     refreshDraftContext();
@@ -179,7 +179,7 @@ export class DraftService {
       const ref = await getCommitRef(folder, commitRef);
       if (ref) {
         await appendToDoc(
-          ref.url ? `\n\n---\nCommit ${ref.shortSha} — ${ref.url}` : `\n\n---\nCommit ${ref.shortSha}`,
+          ref.url ? `\n\n---\nCommit ${ref.shortSha} - ${ref.url}` : `\n\n---\nCommit ${ref.shortSha}`,
         );
       }
     }

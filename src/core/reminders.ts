@@ -80,14 +80,14 @@ export class ReminderService {
     }
 
     // Never stack a nudge on top of a flow the user is already in. We bail *before*
-    // touching any repo's lastHeadSha so a commit made mid-review isn't swallowed — it'll
+    // touching any repo's lastHeadSha so a commit made mid-review isn't swallowed - it'll
     // be detected on the next free tick instead of silently advancing the pointer.
     if (isBusy()) {
       return;
     }
 
     // Detect a new commit in any repo since we last looked. A fresh commit is an explicit
-    // action — always prompt once for it, even during a snooze.
+    // action - always prompt once for it, even during a snooze.
     if (c.get<boolean>('remindOnCommit', true) && (await this.checkCommits())) {
       return;
     }
@@ -103,7 +103,7 @@ export class ReminderService {
   /**
    * Scan *every* repo for a fresh commit; nudge for the first one found. A commit is an
    * explicit action, so it fires regardless of which repo is focused or whether the repo
-   * is in the tracked set — as long as it has a ticket. Returns true if it nudged.
+   * is in the tracked set - as long as it has a ticket. Returns true if it nudged.
    */
   private async checkCommits(): Promise<boolean> {
     for (const repo of this.registry.all()) {

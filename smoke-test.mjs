@@ -1,4 +1,4 @@
-// Standalone integration smoke test — exercises the REAL compiled modules
+// Standalone integration smoke test - exercises the REAL compiled modules
 // (out/nimClient.js, out/jira.js) without the VS Code layer.
 //
 // Run after `npm run compile`. Reads everything from env vars (no secrets on disk):
@@ -29,7 +29,7 @@ async function testNim() {
   head('NVIDIA NIM');
   const apiKey = process.env.NIM_API_KEY;
   if (!apiKey) {
-    console.log('  (skipped — set NIM_API_KEY)');
+    console.log('  (skipped - set NIM_API_KEY)');
     return;
   }
   const cfg = {
@@ -55,7 +55,7 @@ async function testJira() {
   head('Jira');
   const { JIRA_BASE_URL, JIRA_EMAIL, JIRA_TOKEN, JIRA_TEST_ISSUE } = process.env;
   if (!JIRA_BASE_URL || !JIRA_EMAIL || !JIRA_TOKEN) {
-    console.log('  (skipped — set JIRA_BASE_URL, JIRA_EMAIL, JIRA_TOKEN)');
+    console.log('  (skipped - set JIRA_BASE_URL, JIRA_EMAIL, JIRA_TOKEN)');
     return;
   }
   const cfg = { baseUrl: JIRA_BASE_URL, email: JIRA_EMAIL, token: JIRA_TOKEN };
@@ -77,7 +77,7 @@ async function testJira() {
   }
 
   if (JIRA_TEST_ISSUE) {
-    const text = `Smoke test ${new Date().toISOString()} — verifying worklog + comment.`;
+    const text = `Smoke test ${new Date().toISOString()} - verifying worklog + comment.`;
     try {
       await addWorklog(cfg, JIRA_TEST_ISSUE, 60, text);
       ok(`logged work on ${JIRA_TEST_ISSUE}`);

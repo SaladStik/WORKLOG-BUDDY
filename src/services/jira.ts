@@ -88,7 +88,7 @@ export async function searchAssignedIssues(cfg: JiraConfig, max = 25): Promise<J
   }));
 }
 
-/** Lightweight connection check — returns the authenticated account's display name. */
+/** Lightweight connection check - returns the authenticated account's display name. */
 export async function testConnection(cfg: JiraConfig): Promise<string> {
   const res = await fetch(`${base(cfg)}/rest/api/3/myself`, {
     headers: { Authorization: authHeader(cfg), Accept: 'application/json' },

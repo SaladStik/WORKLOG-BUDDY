@@ -3,7 +3,7 @@ type AdfNode = Record<string, any>;
 
 /**
  * Parses inline markdown in a single line into ADF text nodes: **bold**, *italic*,
- * `code`, [text](url), and bare URLs — each with the appropriate ADF mark. The model
+ * `code`, [text](url), and bare URLs - each with the appropriate ADF mark. The model
  * emits markdown, which Jira would otherwise render as literal asterisks/backticks.
  */
 function parseInline(text: string): AdfNode[] {

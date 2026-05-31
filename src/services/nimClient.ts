@@ -10,7 +10,7 @@ const SYSTEM_PROMPT =
   'You are a concise software-engineering assistant. Given git activity (diff, commits, ' +
   'changed files), you write a factual work-log update for a Jira ticket. Use past tense, ' +
   'read the actual diff to describe what changed in each file, and focus on what changed ' +
-  'and why. No preamble, no fluff, no invented changes — only what the diff shows.';
+  'and why. No preamble, no fluff, no invented changes - only what the diff shows.';
 
 /**
  * Verifies the NIM endpoint, key and model with a minimal 1-token request.
@@ -32,7 +32,7 @@ export async function testNim(cfg: NimConfig): Promise<string> {
 /**
  * Calls the NVIDIA NIM OpenAI-compatible endpoint and returns the full summary text.
  * `chat_template_kwargs` is a NIM-specific extra body field, so the params object is
- * cast — the OpenAI SDK forwards unknown fields to the request body.
+ * cast - the OpenAI SDK forwards unknown fields to the request body.
  */
 export async function summarize(cfg: NimConfig, userPrompt: string): Promise<string> {
   const client = new OpenAI({ apiKey: cfg.apiKey, baseURL: cfg.baseUrl });
@@ -55,7 +55,7 @@ export async function summarize(cfg: NimConfig, userPrompt: string): Promise<str
 }
 
 /**
- * Streaming variant — invokes `onChunk` for each piece of generated text so the UI
+ * Streaming variant - invokes `onChunk` for each piece of generated text so the UI
  * can show tokens live. Returns the full assembled text once the stream ends.
  */
 export async function summarizeStream(
@@ -125,7 +125,7 @@ export function buildPrompt(
     '',
     'Produce, in markdown:',
     '1. A one-line **Summary** of the overall work.',
-    '2. A **Changes by file** section: one bullet per changed file as `path` — what changed and why.',
+    '2. A **Changes by file** section: one bullet per changed file as `path` - what changed and why.',
     '   Group trivially-related files if there are many. Base every point on the diff above.',
     'Keep each bullet to one or two lines. Do not invent changes not present in the diff.',
     ...styleLine,

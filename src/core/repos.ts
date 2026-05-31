@@ -1,19 +1,22 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 import { ActivityTracker } from '../services/activityTracker';
 import { findRepoRoot, getHeadSha } from '../services/gitInfo';
 
-/** Legacy single-repo key — migrated to a per-repo key on first run. */
+/** Legacy single-repo key - migrated to a per-repo key on first run. */
 const LEGACY_ACTIVE_TICKET_KEY = 'worklog.activeTicket';
 const ACTIVE_TICKET_PREFIX = 'worklog.activeTicket::';
 /** Roots the user has un-checked in the picker (default is "tracked"). */
 const EXCLUDED_REPOS_KEY = 'worklog.excludedRepos';
+/** How many directory levels below a workspace folder to scan for nested repos. */
+const MAX_SCAN_DEPTH = 5;
 
 /** One tracked git repository in the current workspace. */
 export interface RepoState {
   /** Normalized repo root (forward slashes, no trailing slash). */
   root: string;
-  /** Display name — the repo folder's basename. */
+  /** Display name - the repo folder's basename. */
   name: string;
   /** Per-repo activity clock (idle gaps excluded). */
   tracker: ActivityTracker;
@@ -24,7 +27,7 @@ export interface RepoState {
 /**
  * Normalize a filesystem path for prefix comparison and stable map keys: forward slashes,
  * no trailing slash, and an upper-cased drive letter. The drive-letter step matters on
- * Windows — git's `--show-toplevel` and VS Code's `fsPath` can disagree on its case, which
+ * Windows - git's `--show-toplevel` and VS Code's `fsPath` can disagree on its case, which
  * would otherwise register the same repo twice.
  */
 function norm(p: string): string {
@@ -46,10 +49,38 @@ function sameOrInside(file: string, root: string): boolean {
 }
 
 /**
+ * Recursively collect git repo roots at or below `dir`. A directory holding a
+ * `.git` entry (a folder for normal repos, a file for submodules/worktrees) is a
+ * repo root; we don't descend into it further. Skips node_modules and other
+ * dot-directories, and bails on unreadable dirs.
+ */
+async function scanForRepos(dir: string, depth: number, roots: Set<string>): Promise<void> {
+  let entries: fs.Dirent[];
+  try {
+    entries = await fs.promises.readdir(dir, { withFileTypes: true });
+  } catch {
+    return; // unreadable (permissions, removed, not a directory)
+  }
+  if (entries.some((e) => e.name === '.git')) {
+    roots.add(norm(dir));
+    return;
+  }
+  if (depth <= 0) {
+    return;
+  }
+  for (const e of entries) {
+    if (!e.isDirectory() || e.name === 'node_modules' || e.name.startsWith('.')) {
+      continue;
+    }
+    await scanForRepos(path.join(dir, e.name), depth - 1, roots);
+  }
+}
+
+/**
  * Discovers and tracks every git repo in the workspace, keeping per-repo state:
  * an active ticket, an activity clock, and a commit pointer. This is what makes
  * Worklog Buddy work in a multi-root workspace (or a "wonky" layout where the repo
- * isn't the opened folder) — each repo is tracked independently, and the "current"
+ * isn't the opened folder) - each repo is tracked independently, and the "current"
  * repo follows the active editor.
  *
  * The registry owns the *single* set of activity-event subscriptions and routes each
@@ -150,7 +181,7 @@ export class RepoRegistry implements vscode.Disposable {
   private async discoverRoots(): Promise<Set<string>> {
     const roots = new Set<string>();
 
-    // (a) Walk up from each workspace folder — handles opening a *subfolder* of a repo.
+    // (a) Walk up from each workspace folder - handles opening a *subfolder* of a repo.
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       const root = await findRepoRoot(folder.uri.fsPath);
       if (root) {
@@ -158,15 +189,13 @@ export class RepoRegistry implements vscode.Disposable {
       }
     }
 
-    // (b) Find repos *below* the opened folder(s) — handles multiple / nested repos.
-    // `.git/HEAD` exists for every ordinary repo; its grandparent dir is the repo root.
-    try {
-      const heads = await vscode.workspace.findFiles('**/.git/HEAD', '**/node_modules/**');
-      for (const uri of heads) {
-        roots.add(norm(path.dirname(path.dirname(uri.fsPath))));
-      }
-    } catch {
-      // findFiles can reject if no workspace is open; folder-based discovery still applies.
+    // (b) Find repos *below* the opened folder(s) - handles multiple / nested repos,
+    // and the common case where the opened folder isn't a repo but contains some.
+    // We scan the tree ourselves rather than using vscode.workspace.findFiles: a
+    // `**/.git/**` glob comes up empty because `.git` is in VS Code's default
+    // files.exclude and its search service won't descend into it.
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      await scanForRepos(folder.uri.fsPath, MAX_SCAN_DEPTH, roots);
     }
 
     return roots;
@@ -239,7 +268,7 @@ export class RepoRegistry implements vscode.Disposable {
     this._onUpdated.fire();
   }
 
-  /** Pin focus to a repo (no toggle) — used after the user explicitly chooses one. */
+  /** Pin focus to a repo (no toggle) - used after the user explicitly chooses one. */
   pin(root: string): void {
     const n = norm(root);
     if (this.repos.has(n)) {
@@ -253,7 +282,7 @@ export class RepoRegistry implements vscode.Disposable {
     return !this.excluded.has(norm(root));
   }
 
-  /** Tracked repos — the ones time nudges and "write for all" act on. */
+  /** Tracked repos - the ones time nudges and "write for all" act on. */
   included(): RepoState[] {
     return this.all().filter((r) => !this.excluded.has(r.root));
   }

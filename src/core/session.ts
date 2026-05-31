@@ -12,7 +12,7 @@ const EMPTY_SNAPSHOT: ActivitySnapshot = {
 /**
  * Facade over the *current* repo in the {@link RepoRegistry}. The rest of the extension
  * (ticket picker, draft service, panel, reminders) talks to one "active ticket" and one
- * activity clock through this object — the registry decides which repo that maps to based
+ * activity clock through this object - the registry decides which repo that maps to based
  * on the active editor, so multi-root workspaces work without each caller knowing about
  * repos. Fires `onUpdated` when the ticket changes or an update is posted/reset.
  */
@@ -47,7 +47,7 @@ export class SessionManager implements vscode.Disposable {
     this._onUpdated.fire();
   }
 
-  /** Repo root that git commands should run against — the current repo. */
+  /** Repo root that git commands should run against - the current repo. */
   currentRepoFolder(): string | undefined {
     return this.registry.current()?.root;
   }

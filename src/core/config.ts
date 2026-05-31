@@ -19,7 +19,7 @@ export function getFolder(): string | undefined {
  * Resolve the git repository to operate on. Tries the active editor's file first
  * (so a nested or multi-root repo is found), then each workspace folder, and
  * returns the actual repo root (`--show-toplevel`). This is what git commands
- * should use — `getFolder()` alone breaks when the opened folder isn't the repo
+ * should use - `getFolder()` alone breaks when the opened folder isn't the repo
  * root (parent folder opened, repo in a subfolder, or multi-root workspace).
  */
 export async function getRepoFolder(): Promise<string | undefined> {
@@ -93,7 +93,7 @@ export interface PanelSettings {
   snoozeMinutes: number;
 }
 
-/** Settings to send to the webview. Secrets are returned blank — never echoed back. */
+/** Settings to send to the webview. Secrets are returned blank - never echoed back. */
 export function readPanelSettings(): PanelSettings {
   const c = cfg();
   return {

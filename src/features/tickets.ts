@@ -25,7 +25,7 @@ export class TicketService {
       return { root: repos[0]?.root };
     }
     // If the user has pinned a repo in the picker, treat that as their explicit choice
-    // and don't nag — actions target the pinned repo until they unpin it.
+    // and don't nag - actions target the pinned repo until they unpin it.
     if (this.registry.isPinned) {
       return { root: this.registry.current()?.root };
     }

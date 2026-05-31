@@ -97,7 +97,7 @@ export function getPanelHtml(webview: vscode.Webview): string {
   .ticket-hero { font-size: 16px; font-weight: 600; margin: 2px 0 10px; }
   .ticket-hero.none { opacity: 0.55; font-weight: 400; font-style: italic; }
 
-  /* Repo picker — only shown in multi-root workspaces with more than one repo. */
+  /* Repo picker - only shown in multi-root workspaces with more than one repo. */
   .repoSection { margin-bottom: 12px; }
   .repoHead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
   .repoHead .lbl { font-size: 11px; font-weight: 600; text-transform: uppercase;
