@@ -40,11 +40,63 @@ export async function getRepoFolder(): Promise<string | undefined> {
   return undefined;
 }
 
+/**
+ * The workspace folder the URL override belongs to: the one holding the active file, else
+ * the first folder. The override is read/written against this folder's `.vscode/settings.json`.
+ */
+function overrideFolder(): vscode.WorkspaceFolder | undefined {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders?.length) {
+    return undefined;
+  }
+  const active = vscode.window.activeTextEditor?.document.uri;
+  return (active && vscode.workspace.getWorkspaceFolder(active)) || folders[0];
+}
+
+/** `worklog` config scoped to the override's folder, so resource-scoped reads/writes resolve there. */
+function cfgForOverride(): vscode.WorkspaceConfiguration {
+  return vscode.workspace.getConfiguration('worklog', overrideFolder()?.uri);
+}
+
+/**
+ * Effective Jira base URL: the per-workspace override when set, otherwise the global
+ * default. Auth (email/token) is always global - only the URL can differ per workspace.
+ */
+export function resolveJiraBaseUrl(): string {
+  const c = cfgForOverride();
+  const override = c.get<string>('jira.baseUrlOverride', '').trim();
+  return override || c.get<string>('jira.baseUrl', '').trim();
+}
+
+/** Global default URL, the workspace override, and the resolved effective URL (for UI). */
+export function getJiraUrlInfo(): { global: string; override: string; effective: string } {
+  const c = cfgForOverride();
+  const global = c.get<string>('jira.baseUrl', '').trim();
+  const override = c.get<string>('jira.baseUrlOverride', '').trim();
+  return { global, override, effective: override || global };
+}
+
+/**
+ * Set (or clear, when blank) this workspace's Jira URL override. Writes to the folder scope
+ * so it lands in that folder's `.vscode/settings.json` (not the `.code-workspace` file) and
+ * other workspaces keep the global URL. Returns false when no folder is open.
+ */
+export async function setWorkspaceJiraUrl(url: string): Promise<boolean> {
+  const folder = overrideFolder();
+  if (!folder) {
+    return false;
+  }
+  const value = url.trim();
+  const conf = vscode.workspace.getConfiguration('worklog', folder.uri);
+  // undefined removes the key entirely, so the folder falls back to the global URL.
+  await conf.update('jira.baseUrlOverride', value || undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+  return true;
+}
+
 /** Full Jira config (settings + token) or undefined if any part is missing. */
 export async function getJiraConfig(context: vscode.ExtensionContext): Promise<JiraConfig | undefined> {
-  const c = cfg();
-  const baseUrl = c.get<string>('jira.baseUrl', '');
-  const email = c.get<string>('jira.email', '');
+  const baseUrl = resolveJiraBaseUrl();
+  const email = cfg().get<string>('jira.email', '');
   const token = await context.secrets.get(JIRA_TOKEN_SECRET);
   if (!baseUrl || !email || !token) {
     return undefined;
@@ -79,6 +131,10 @@ export async function setSecret(context: vscode.ExtensionContext, key: string, p
 
 export interface PanelSettings {
   jiraBaseUrl: string;
+  /** Per-workspace URL override (blank = use the global URL). */
+  jiraBaseUrlOverride: string;
+  /** Whether a folder/workspace is open, so the panel can enable the override field. */
+  hasWorkspace: boolean;
   jiraEmail: string;
   jiraToken: string;
   nimApiKey: string;
@@ -96,8 +152,11 @@ export interface PanelSettings {
 /** Settings to send to the webview. Secrets are returned blank - never echoed back. */
 export function readPanelSettings(): PanelSettings {
   const c = cfg();
+  const urls = getJiraUrlInfo();
   return {
-    jiraBaseUrl: c.get('jira.baseUrl', ''),
+    jiraBaseUrl: urls.global,
+    jiraBaseUrlOverride: urls.override,
+    hasWorkspace: !!vscode.workspace.workspaceFolders?.length,
     jiraEmail: c.get('jira.email', ''),
     jiraToken: '',
     nimApiKey: '',
@@ -121,6 +180,9 @@ export async function savePanelSettings(
   const c = cfg();
   const G = vscode.ConfigurationTarget.Global;
   await c.update('jira.baseUrl', (s.jiraBaseUrl as string) ?? '', G);
+  // The URL override is workspace-scoped (blank clears it). Auth + global URL stay global.
+  // No-ops when no folder is open.
+  await setWorkspaceJiraUrl((s.jiraBaseUrlOverride as string) ?? '');
   await c.update('jira.email', (s.jiraEmail as string) ?? '', G);
   await c.update('nim.baseUrl', (s.nimBaseUrl as string) ?? '', G);
   await c.update('nim.model', (s.nimModel as string) ?? '', G);

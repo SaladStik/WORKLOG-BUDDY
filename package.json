@@ -140,7 +140,14 @@
         "worklog.jira.baseUrl": {
           "type": "string",
           "default": "",
-          "description": "Jira base URL, e.g. https://yourcompany.atlassian.net"
+          "scope": "application",
+          "description": "Global Jira base URL, e.g. https://yourcompany.atlassian.net. Used everywhere unless a workspace overrides it via 'worklog.jira.baseUrlOverride'."
+        },
+        "worklog.jira.baseUrlOverride": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Per-workspace Jira URL override. When set, this workspace posts to this Jira site instead of the global 'worklog.jira.baseUrl'. Auth (email/token) is always global - only the URL changes. Leave blank to use the global URL."
         },
         "worklog.jira.email": {
           "type": "string",

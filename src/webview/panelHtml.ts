@@ -149,6 +149,10 @@ export function getPanelHtml(webview: vscode.Webview): string {
   .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
   .preset { padding: 4px 9px; font-size: 12px; border-radius: 10px; }
 
+  .tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; margin-left: 6px;
+    background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
+    text-transform: uppercase; letter-spacing: 0.04em; vertical-align: middle; }
+  input:disabled, textarea:disabled { opacity: 0.5; cursor: not-allowed; }
   .status { font-size: 12px; opacity: 0.85; }
   .status.ok { color: var(--vscode-terminal-ansiGreen, #4caf50); }
   .status.error { color: var(--vscode-errorForeground); }
@@ -212,11 +216,14 @@ export function getPanelHtml(webview: vscode.Webview): string {
 <div class="panel" id="panel-settings">
   <div class="card">
     <h3>Jira connection</h3>
-    <label>Jira URL</label>
+    <label>Jira URL <span class="tag">global</span></label>
     <input type="text" id="jiraBaseUrl" placeholder="https://yourcompany.atlassian.net" />
-    <label>Account email</label>
+    <label>Override for this workspace <span class="tag">workspace</span></label>
+    <input type="text" id="jiraBaseUrlOverride" placeholder="Leave blank to use the global URL" />
+    <div class="helper" id="jiraOverrideHelp">When set, this workspace posts to this Jira site instead of the global URL. Email &amp; token stay global.</div>
+    <label>Account email <span class="tag">global</span></label>
     <input type="text" id="jiraEmail" placeholder="you@example.com" />
-    <label>API token</label>
+    <label>API token <span class="tag">global</span></label>
     <div class="row">
       <input type="password" id="jiraToken" class="grow" placeholder="ATATT..." />
       <button class="reveal" data-toggle="jiraToken">Show</button>
@@ -288,7 +295,7 @@ export function getPanelHtml(webview: vscode.Webview): string {
 (function() {
   const vscode = acquireVsCodeApi();
   const $ = (id) => document.getElementById(id);
-  const fields = ['jiraBaseUrl','jiraEmail','jiraToken','nimApiKey','nimBaseUrl','nimModel','updateStyle',
+  const fields = ['jiraBaseUrl','jiraBaseUrlOverride','jiraEmail','jiraToken','nimApiKey','nimBaseUrl','nimModel','updateStyle',
                   'workThresholdMinutes','updateReminderMinutes','idleTimeoutMinutes','snoozeMinutes'];
   const toggles = ['autoNudge','remindOnCommit'];
   let selectedTicket = null;
@@ -302,6 +309,17 @@ export function getPanelHtml(webview: vscode.Webview): string {
   function applySettings(s) {
     for (const f of fields) if (s[f] !== undefined && s[f] !== null) $(f).value = s[f];
     for (const t of toggles) $(t).classList.toggle('on', !!s[t]);
+    // The workspace override only makes sense when a folder/workspace is open.
+    const ovr = $('jiraBaseUrlOverride');
+    if (s.hasWorkspace === false) {
+      ovr.disabled = true;
+      ovr.placeholder = 'Open a folder to set a workspace override';
+      $('jiraOverrideHelp').textContent = 'Open a folder or workspace to override the Jira URL here.';
+    } else {
+      ovr.disabled = false;
+      ovr.placeholder = 'Leave blank to use the global URL';
+      $('jiraOverrideHelp').textContent = 'When set, this workspace posts to this Jira site instead of the global URL. Email & token stay global.';
+    }
   }
   function setConn(state, text) {
     const pill = $('connPill'); const inline = $('connStatus');

@@ -1,5 +1,12 @@
 import * as vscode from 'vscode';
-import { cfg, getJiraConfig, setSecret, JIRA_TOKEN_SECRET } from '../core/config';
+import {
+  cfg,
+  getJiraConfig,
+  getJiraUrlInfo,
+  setSecret,
+  setWorkspaceJiraUrl,
+  JIRA_TOKEN_SECRET,
+} from '../core/config';
 import { testConnection } from '../services/jira';
 import { TicketService } from './tickets';
 
@@ -9,15 +16,21 @@ export async function manageJira(
   tickets: TicketService,
 ): Promise<void> {
   const c = cfg();
-  const baseUrl = c.get<string>('jira.baseUrl', '');
+  const { global, override, effective } = getJiraUrlInfo();
   const email = c.get<string>('jira.email', '');
   const hasToken = !!(await context.secrets.get(JIRA_TOKEN_SECRET));
+  const hasWorkspace = !!vscode.workspace.workspaceFolders?.length;
 
   const items: (vscode.QuickPickItem & { id: string })[] = [
-    { id: 'url', label: '$(globe) Jira URL', description: baseUrl || 'not set' },
-    { id: 'email', label: '$(mail) Account email', description: email || 'not set' },
-    { id: 'token', label: '$(key) API token', description: hasToken ? 'set' : 'not set' },
-    { id: 'test', label: '$(plug) Test connection' },
+    { id: 'url', label: '$(globe) Jira URL (global)', description: global || 'not set' },
+    {
+      id: 'urlOverride',
+      label: '$(root-folder) Jira URL for this workspace',
+      description: !hasWorkspace ? 'open a folder to override' : override || 'using global',
+    },
+    { id: 'email', label: '$(mail) Account email (global)', description: email || 'not set' },
+    { id: 'token', label: '$(key) API token (global)', description: hasToken ? 'set' : 'not set' },
+    { id: 'test', label: '$(plug) Test connection', description: effective || undefined },
     { id: 'switch', label: '$(checklist) Switch active ticket' },
   ];
 
@@ -30,13 +43,34 @@ export async function manageJira(
   switch (sel.id) {
     case 'url': {
       const v = await vscode.window.showInputBox({
-        prompt: 'Jira base URL',
-        value: baseUrl,
+        prompt: 'Global Jira base URL (used unless a workspace overrides it)',
+        value: global,
         placeHolder: 'https://yourcompany.atlassian.net',
         ignoreFocusOut: true,
       });
       if (v !== undefined) {
         await c.update('jira.baseUrl', v.trim(), G);
+      }
+      break;
+    }
+    case 'urlOverride': {
+      if (!hasWorkspace) {
+        vscode.window.showWarningMessage('Open a folder or workspace to set a per-workspace Jira URL.');
+        break;
+      }
+      const v = await vscode.window.showInputBox({
+        prompt: 'Jira URL for this workspace (leave blank to use the global URL)',
+        value: override,
+        placeHolder: global || 'https://otherproject.atlassian.net',
+        ignoreFocusOut: true,
+      });
+      if (v !== undefined) {
+        await setWorkspaceJiraUrl(v);
+        vscode.window.showInformationMessage(
+          v.trim()
+            ? `This workspace will use ${v.trim()} for Jira.`
+            : 'Cleared - this workspace now uses the global Jira URL.',
+        );
       }
       break;
     }
